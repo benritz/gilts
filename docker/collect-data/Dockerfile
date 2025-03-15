@@ -4,7 +4,7 @@ WORKDIR /app
 COPY gilts-go .
 
 RUN mkdir -p dist && \
-    go build -o dist/main cmd/capture-data/main.go
+    go build -o dist/main cmd/collect-data/main.go
 
 FROM public.ecr.aws/lambda/provided:al2023
 LABEL author="support@ibase.com"
