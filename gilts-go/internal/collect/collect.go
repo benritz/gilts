@@ -1,6 +1,8 @@
 package collect
 
 import (
+	"benritz/gilts/internal/types"
+
 	"context"
 	"fmt"
 	"io"
@@ -14,62 +16,13 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-type Gilt struct {
-	Source        string
-	CaptureDate   time.Time
-	ISIN          string
-	Ticker        string
-	Desc          string
-	Coupon        float64
-	CleanPrice    float64
-	DirtyPrice    float64
-	MaturityDate  time.Time
-	MaturityYears float64
-	MaturityYield float64
-}
-
 type Collector interface {
-	Collect(ctx context.Context) ([]*Gilt, error)
+	Collect(ctx context.Context) ([]*types.Gilt, error)
 	Source() string
 }
 
-func MaturityYears(capture, maturity time.Time) float64 {
-	years := maturity.Year() - capture.Year()
-
-	t := time.Date(
-		maturity.Year(),
-		capture.Month(),
-		capture.Day(),
-		0,
-		0,
-		0,
-		0,
-		maturity.Location(),
-	)
-
-	if t.After(maturity) {
-		years--
-		t = t.AddDate(-1, 0, 0)
-	}
-
-	days := int(maturity.Sub(t).Hours() / 24)
-
-	isLeapYear := func(year int) bool {
-		return year%4 == 0 && (year%100 != 0 || year%400 == 0)
-	}
-
-	daysInYear := func(year int) int {
-		if isLeapYear(year) {
-			return 366
-		}
-		return 365
-	}
-
-	return float64(years) + float64(days)/float64(daysInYear(t.Year()))
-}
-
-func StoreToWriter(gilts []*Gilt, output io.Writer) error {
-	writer := parquet.NewGenericWriter[*Gilt](output)
+func StoreToWriter(gilts []*types.Gilt, output io.Writer) error {
+	writer := parquet.NewGenericWriter[*types.Gilt](output)
 	defer writer.Close()
 
 	if _, err := writer.Write(gilts); err != nil {
@@ -79,7 +32,7 @@ func StoreToWriter(gilts []*Gilt, output io.Writer) error {
 	return nil
 }
 
-func StoreToPath(gilts []*Gilt, path string) error {
+func StoreToPath(gilts []*types.Gilt, path string) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)

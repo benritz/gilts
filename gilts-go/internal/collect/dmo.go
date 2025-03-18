@@ -1,6 +1,7 @@
 package collect
 
 import (
+	"benritz/gilts/internal/types"
 	"context"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ func NewDMOCollector() *DMOCollector {
 	return &DMOCollector{}
 }
 
-func (c *DMOCollector) Collect(ctx context.Context) ([]*Gilt, error) {
+func (c *DMOCollector) Collect(ctx context.Context) ([]*types.Gilt, error) {
 	now := time.Now().Add(-72 * time.Hour)
 
 	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", now.Day(), now.Month(), now.Year())
@@ -63,7 +64,7 @@ func (c *DMOCollector) Collect(ctx context.Context) ([]*Gilt, error) {
 		return nil, err
 	}
 
-	data := []*Gilt{}
+	data := []*types.Gilt{}
 
 	sheets, _ := wb.List()
 	for _, sheetName := range sheets {
@@ -90,7 +91,7 @@ func (d *DMOCollector) Source() string {
 	return "DMO"
 }
 
-func (c *DMOCollector) parseRow(row []string) (*Gilt, error) {
+func (c *DMOCollector) parseRow(row []string) (*types.Gilt, error) {
 	if len(row) == 0 {
 		return nil, nil
 	}
@@ -101,7 +102,7 @@ func (c *DMOCollector) parseRow(row []string) (*Gilt, error) {
 		return nil, nil
 	}
 
-	gilt := &Gilt{}
+	gilt := &types.Gilt{}
 	errs := []error{}
 
 	gilt.Source = "DMO"
@@ -126,7 +127,7 @@ func (c *DMOCollector) parseRow(row []string) (*Gilt, error) {
 	cell = strings.TrimSpace(row[7])
 	if ts, err := time.Parse("02-Jan-2006", cell); err == nil {
 		gilt.MaturityDate = ts
-		gilt.MaturityYears = MaturityYears(gilt.CaptureDate, gilt.MaturityDate)
+		gilt.MaturityYears = types.MaturityYears(gilt.CaptureDate, gilt.MaturityDate)
 	} else {
 		errs = append(errs, fmt.Errorf("failed to parse date '%s': %v", cell, err))
 	}

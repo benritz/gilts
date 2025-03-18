@@ -1,6 +1,7 @@
 package collect
 
 import (
+	"benritz/gilts/internal/types"
 	"context"
 	"fmt"
 	"strconv"
@@ -17,8 +18,8 @@ func NewDividendDataCollector() *DividendDataCollector {
 	return &DividendDataCollector{}
 }
 
-func (c *DividendDataCollector) Collect(ctx context.Context) ([]*Gilt, error) {
-	data := []*Gilt{}
+func (c *DividendDataCollector) Collect(ctx context.Context) ([]*types.Gilt, error) {
+	data := []*types.Gilt{}
 
 	x := colly.NewCollector()
 
@@ -50,8 +51,8 @@ var (
 	DD_COL_MATURITY_YIELD    = 6
 )
 
-func (c *DividendDataCollector) scrapeGilt(e *colly.HTMLElement) (*Gilt, error) {
-	gilt := Gilt{CaptureDate: time.Now()}
+func (c *DividendDataCollector) scrapeGilt(e *colly.HTMLElement) (*types.Gilt, error) {
+	gilt := types.Gilt{CaptureDate: time.Now()}
 	errs := []error{}
 
 	e.ForEach("td", func(col int, el *colly.HTMLElement) {
@@ -76,7 +77,7 @@ func (c *DividendDataCollector) scrapeGilt(e *colly.HTMLElement) (*Gilt, error) 
 		case DD_COL_MATURITY_DATE:
 			if ts, err := time.Parse("02-Jan-2006", el.Text); err == nil {
 				gilt.MaturityDate = ts
-				gilt.MaturityYears = MaturityYears(gilt.CaptureDate, gilt.MaturityDate)
+				gilt.MaturityYears = types.MaturityYears(gilt.CaptureDate, gilt.MaturityDate)
 			} else {
 				errs = append(errs, fmt.Errorf("failed to parse date '%s': %v", el.Text, err))
 			}
