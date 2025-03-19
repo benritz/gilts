@@ -11,17 +11,35 @@ func main() {
 	var y, ey, price float64
 	var err2 error
 
-	// TS28	4 1/2% Treasury Gilt 2028
-	fmt.Println("TS28 4 1/2% Treasury Gilt 2028")
-	ey = types.EstimatedYieldToMaturity(4.5, 100, 101, 3.0+(81.0/365.0))
+	// TG25 0 5/8% Treasury Gilt 2025
+	fmt.Println("TG25 0 5/8% Treasury Gilt 2025")
+	ey = types.EstimatedYieldToMaturity(0.625, 100, 99.28, 0.0+(79.0/365.0))
 	fmt.Printf("Estimated YTM: %.8f\n", ey)
-	y, err2 = types.CleanPriceYieldToMaturity(4.5, 100, 101.0, 2, 7, 80, 182.5, ey, 0.001, 1_000)
+	y, err2 = types.CleanPriceYieldToMaturity(0.625, 100, 99.28, 2, 1, 79, 182, ey, 0.001, 1_000)
 	if err2 != nil {
 		fmt.Printf("Error: %v\n", err2)
 	} else {
 		fmt.Printf("Clean YTM: %.8f\n", y)
 	}
-	y, err2 = types.DirtyPriceYieldToMaturity(4.5, 100, 102.25, 2, 7, 80, 182.5, ey, 0.001, 1_000)
+	y, err2 = types.DirtyPriceYieldToMaturity(0.625, 100, 99.45, 2, 1, 79, 182, ey, 0.001, 1_000)
+	if err2 != nil {
+		fmt.Printf("Error: %v\n", err2)
+	} else {
+		fmt.Printf("Dirty YTM: %.8f\n", y)
+	}
+	fmt.Println()
+
+	// TS28	4 1/2% Treasury Gilt 2028
+	fmt.Println("TS28 4 1/2% Treasury Gilt 2028")
+	ey = types.EstimatedYieldToMaturity(4.5, 100, 100.9, 3.0+(81.0/365.0))
+	fmt.Printf("Estimated YTM: %.8f\n", ey)
+	y, err2 = types.CleanPriceYieldToMaturity(4.5, 100, 100.9, 2, 7, 80, 182, ey, 0.001, 1_000)
+	if err2 != nil {
+		fmt.Printf("Error: %v\n", err2)
+	} else {
+		fmt.Printf("Clean YTM: %.8f\n", y)
+	}
+	y, err2 = types.DirtyPriceYieldToMaturity(4.5, 100, 102.16, 2, 7, 80, 182, ey, 0.001, 1_000)
 	if err2 != nil {
 		fmt.Printf("Error: %v\n", err2)
 	} else {

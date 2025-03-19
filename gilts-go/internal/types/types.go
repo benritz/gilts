@@ -6,53 +6,81 @@ import (
 	"time"
 )
 
-type Gilt struct {
-	Source        string
-	CaptureDate   time.Time
-	ISIN          string
-	Ticker        string
-	Desc          string
-	Coupon        float64
-	CleanPrice    float64
-	DirtyPrice    float64
-	MaturityDate  time.Time
-	MaturityYears float64
-	MaturityYield float64
+type BondType string
+
+var (
+	UKGilt BondType = "UK Gilt"
+)
+
+type Bond struct {
+	Type             BondType
+	Source           string
+	ISIN             string
+	Ticker           string
+	Desc             string
+	FacePrice        float64
+	Coupon           float64
+	SettlementDate   time.Time
+	PrevCouponDate   time.Time
+	NextCouponDate   time.Time
+	RemainingDays    uint16
+	AccruedDays      uint16
+	CouponPeriodDays uint16
+	CouponPeriods    uint16
+	MaturityDate     time.Time
+	MaturityYears    uint8
+	MaturityDays     uint16
+	CleanPrice       float64
+	DirtyPrice       float64
+	YieldToMaturity  float64
 }
 
-func MaturityYears(capture, maturity time.Time) float64 {
-	years := maturity.Year() - capture.Year()
+func NewUKGilt(source string, settlementDate time.Time) *Bond {
+	return &Bond{
+		Type:           UKGilt,
+		FacePrice:      100.0,
+		Source:         source,
+		SettlementDate: settlementDate,
+	}
+}
 
-	t := time.Date(
-		maturity.Year(),
-		capture.Month(),
-		capture.Day(),
+func MaturityYears(settlementDate, maturityDate time.Time) (uint8, uint16, error) {
+	if maturityDate.Before(settlementDate) {
+		return 0, 0, ErrMaturityDateBeforeSettlement
+	}
+
+	years := uint8(maturityDate.Year() - settlementDate.Year())
+
+	end := time.Date(
+		maturityDate.Year(),
+		maturityDate.Month(),
+		maturityDate.Day(),
 		0,
 		0,
 		0,
 		0,
-		maturity.Location(),
+		maturityDate.Location(),
 	)
 
-	if t.After(maturity) {
+	start := time.Date(
+		maturityDate.Year(),
+		settlementDate.Month(),
+		settlementDate.Day(),
+		0,
+		0,
+		0,
+		0,
+		maturityDate.Location(),
+	)
+
+	if start.After(end) {
 		years--
-		t = t.AddDate(-1, 0, 0)
+		start = start.AddDate(-1, 0, 0)
 	}
 
-	days := int(maturity.Sub(t).Hours() / 24)
+	days := uint16(end.Sub(start).Hours() / 24)
 
-	isLeapYear := func(year int) bool {
-		return year%4 == 0 && (year%100 != 0 || year%400 == 0)
-	}
-
-	daysInYear := func(year int) int {
-		if isLeapYear(year) {
-			return 366
-		}
-		return 365
-	}
-
-	return float64(years) + float64(days)/float64(daysInYear(t.Year()))
+	return years, days, nil
 }
 
 // CleanPrice calculates the bond price when cash flows occur at unequal intervals.
@@ -70,7 +98,7 @@ func MaturityYears(capture, maturity time.Time) float64 {
 // Returns:
 //
 //	Clean bond price.
-func CleanPrice(C, y, F float64, n, m int, tn, tb float64) float64 {
+func CleanPrice(C, y, F float64, n, m, tn, tb uint16) float64 {
 	// Calculate the price of a gilt using the formula:
 	// Price = (Coupon / (1 + Yield)^1) + (Coupon / (1 + Yield)^2) + ... + (Coupon + 100 / (1 + Yield)^Years)
 
@@ -83,44 +111,44 @@ func CleanPrice(C, y, F float64, n, m int, tn, tb float64) float64 {
 	mp := F
 
 	// If maturity doesn't coincide with a coupon payment date, add partial coupon
-	pr := tn / tb
-	if pr > 0 {
-		mp += CP * pr
+	r := float64(tn) / float64(tb)
+	if r > 0 {
+		mp += CP * r
 		m--
 	}
 
 	// Add the present value of the maturity payment
-	price += mp / math.Pow(1+ypp, float64(m)+pr)
+	price += mp / math.Pow(1+ypp, float64(m)+r)
 
-	for j := 1; j <= m; j++ {
+	for j := uint16(1); j <= m; j++ {
 		price += CP / math.Pow(1+ypp, float64(j))
 	}
 
 	return price
 }
 
-func CleanPriceDerivative(C, y, F float64, n, m int, tn, tb float64) float64 {
+func CleanPriceDerivative(C, y, F float64, n, m, tn, tb uint16) float64 {
 	CP := C / 100 / float64(n) * F
 	ypp := y / 100 / float64(n)
 	dYppDy := 1 / (100 * float64(n))
-	pr := tn / tb
+	r := float64(tn) / float64(tb)
 
 	derivative := 0.0
 
 	// Derivative of the maturity payment part
 	mp := F
 	mAdj := m
-	if pr > 0 {
-		mp += CP * pr
+	if r > 0 {
+		mp += CP * r
 		mAdj--
 	}
 
-	term1Numerator := -mp * (float64(mAdj) + pr)
-	term1Denominator := math.Pow(1+ypp, float64(mAdj)+pr+1)
+	term1Numerator := -mp * (float64(mAdj) + r)
+	term1Denominator := math.Pow(1+ypp, float64(mAdj)+r+1)
 	derivative += term1Numerator / term1Denominator * dYppDy
 
 	// Derivative of the coupon payment parts
-	for j := 1; j <= m; j++ {
+	for j := uint16(1); j <= m; j++ {
 		termNumerator := -CP * float64(j)
 		termDenominator := math.Pow(1+ypp, float64(j)+1)
 		derivative += termNumerator / termDenominator * dYppDy
@@ -129,14 +157,7 @@ func CleanPriceDerivative(C, y, F float64, n, m int, tn, tb float64) float64 {
 	return derivative
 }
 
-var (
-	ErrNoConvergence      = fmt.Errorf("Newton-Raphson failed to converge within max iterations")
-	ErrDerivativeTooSmall = fmt.Errorf("Newton-Raphson failed (derivative is too small)")
-)
-
-func CleanPriceYieldToMaturity(C, F, P float64, n, m int, tn, tb, y, t float64, i int) (float64, error) {
-	// y = y / 100
-
+func CleanPriceYieldToMaturity(C, F, P float64, n, m, tn, tb uint16, y, t float64, i int) (float64, error) {
 	for range i {
 		p := CleanPrice(C, y, F, n, m, tn, tb)
 
@@ -147,13 +168,13 @@ func CleanPriceYieldToMaturity(C, F, P float64, n, m int, tn, tb, y, t float64, 
 
 		d := CleanPriceDerivative(C, y, F, n, m, tn, tb)
 		if math.Abs(d) < 1e-12 {
-			return 0, ErrDerivativeTooSmall
+			return 0, ErrYieldToMaturityDerivativeTooSmall
 		}
 
 		y = y - dp/d
 	}
 
-	return 0, ErrNoConvergence
+	return 0, ErrYieldToMaturityNoConvergence
 }
 
 // DirtyPrice calculates the bond price when cash flows occur at unequal intervals.
@@ -171,17 +192,17 @@ func CleanPriceYieldToMaturity(C, F, P float64, n, m int, tn, tb, y, t float64, 
 // Returns:
 //
 //	Dirty bond price.
-func DirtyPrice(C, y, F float64, n, m int, tn, tb float64) float64 {
+func DirtyPrice(C, y, F float64, n, m, tn, tb uint16) float64 {
 	y = y / 100
 
 	sum := 0.0
-	for j := 1; j <= m; j++ {
+	for j := uint16(1); j <= m; j++ {
 		sum += (C / float64(n)) / math.Pow(1+(y/float64(n)), float64(j-1))
 	}
 
-	p := tn / tb
+	r := float64(tn) / float64(tb)
 
-	return (1 / math.Pow(1+(y/float64(n)), p)) * (sum + F/math.Pow(1+(y/float64(n)), float64(m-1)))
+	return (1 / math.Pow(1+(y/float64(n)), r)) * (sum + F/math.Pow(1+(y/float64(n)), float64(m-1)))
 }
 
 // DirtyPriceDerivative calculates the derivative of the bond price function with respect to yield for unequal intervals.
@@ -199,19 +220,21 @@ func DirtyPrice(C, y, F float64, n, m int, tn, tb float64) float64 {
 // Returns:
 //
 //	The derivative of the bond price function.
-func DirtyPriceDerivative(C, F, y float64, n, m int, tn, tb float64) float64 {
+func DirtyPriceDerivative(C, F, y float64, n, m, tn, tb uint16) float64 {
 	derivative := 0.0
-	for j := 1; j <= m; j++ {
+	for j := uint16(1); j <= m; j++ {
 		derivative += -(float64(j-1) * (C / float64(n)) / math.Pow(1+(y/float64(n)), float64(j)) / float64(n))
 	}
 
 	sum := 0.0
-	for j := 1; j <= m; j++ {
+	for j := uint16(1); j <= m; j++ {
 		sum += (C / float64(n)) / math.Pow(1+(y/float64(n)), float64(j-1))
 	}
 
-	derivative += -(tn / tb) / (1 + y/float64(n)) * (F/math.Pow(1+y/float64(n), float64(m-1)) + sum)
-	derivative += (1 / math.Pow(1+y/float64(n), tn/tb)) * (-(float64(m-1) / float64(n)) * F / math.Pow(1+y/float64(n), float64(m)) / float64(n))
+	r := float64(tn) / float64(tb)
+
+	derivative += -r / (1 + y/float64(n)) * (F/math.Pow(1+y/float64(n), float64(m-1)) + sum)
+	derivative += (1 / math.Pow(1+y/float64(n), r)) * (-(float64(m-1) / float64(n)) * F / math.Pow(1+y/float64(n), float64(m)) / float64(n))
 
 	return derivative
 }
@@ -235,7 +258,7 @@ func DirtyPriceDerivative(C, F, y float64, n, m int, tn, tb float64) float64 {
 // Returns:
 //
 //	Yield to maturity as a percentage.
-func DirtyPriceYieldToMaturity(C, F, P float64, n, m int, tn, tb, y, t float64, i int) (float64, error) {
+func DirtyPriceYieldToMaturity(C, F, P float64, n, m, tn, tb uint16, y, t float64, i int) (float64, error) {
 	y = y / 100
 
 	for range i {
@@ -248,13 +271,13 @@ func DirtyPriceYieldToMaturity(C, F, P float64, n, m int, tn, tb, y, t float64, 
 
 		d := DirtyPriceDerivative(C, F, y, n, m, tn, tb)
 		if math.Abs(d) < 1e-12 {
-			return 0, ErrDerivativeTooSmall
+			return 0, ErrYieldToMaturityDerivativeTooSmall
 		}
 
 		y = y - dp/d
 	}
 
-	return 0, ErrNoConvergence
+	return 0, ErrYieldToMaturityNoConvergence
 }
 
 // EstimatedYieldToMaturity calculates a rough estimate of the yield to maturity used as a starting
@@ -272,4 +295,203 @@ func EstimatedYieldToMaturity(C, F, P, n float64) float64 {
 	CP := C / 100 * F
 	y := (CP + (F-P)/n) / ((F + P) / 2)
 	return y * 100
+}
+
+var (
+	ErrNilBond                           = fmt.Errorf("bond is nil")
+	ErrInvalidTicker                     = fmt.Errorf("invalid ticker")
+	ErrInvalidCoupon                     = fmt.Errorf("invalid coupon")
+	ErrInvalidDesc                       = fmt.Errorf("invalid description")
+	ErrInvalidMaturityDate               = fmt.Errorf("invalid maturity date")
+	ErrInvalidSettlementDate             = fmt.Errorf("invalid settlement date")
+	ErrMaturityDateBeforeSettlement      = fmt.Errorf("maturity date is before settlement date")
+	ErrYieldToMaturityNoConvergence      = fmt.Errorf("Newton-Raphson failed to converge within max iterations")
+	ErrYieldToMaturityDerivativeTooSmall = fmt.Errorf("Newton-Raphson failed (derivative is too small)")
+	ErrInvalidCleanPrice                 = fmt.Errorf("invalid clean price")
+	ErrInvalidDirtyPrice                 = fmt.Errorf("invalid dirty price")
+	ErrInvalidYieldToMaturity            = fmt.Errorf("invalid yield to maturity")
+	ErrInvalidFacePrice                  = fmt.Errorf("invalid face price")
+	ErrMissingPriceAndYield              = fmt.Errorf("missing price and yield")
+)
+
+func CompleteBond(b *Bond) error {
+	if b == nil {
+		return ErrNilBond
+	}
+
+	if b.SettlementDate.IsZero() {
+		return ErrInvalidSettlementDate
+	}
+
+	if b.MaturityDate.IsZero() {
+		return ErrInvalidMaturityDate
+	}
+
+	if b.Coupon <= 0 {
+		return ErrInvalidCoupon
+	}
+
+	if b.FacePrice <= 0 {
+		return ErrInvalidFacePrice
+	}
+
+	if b.CleanPrice < 0 {
+		return ErrInvalidCleanPrice
+	}
+
+	if b.DirtyPrice < 0 {
+		return ErrInvalidDirtyPrice
+	}
+
+	if b.YieldToMaturity < 0 {
+		return ErrInvalidYieldToMaturity
+	}
+
+	// requires either a price or yield to maturity to calulate the other
+	if b.CleanPrice == 0 && b.DirtyPrice == 0 && b.YieldToMaturity == 0 {
+		return ErrMissingPriceAndYield
+	}
+
+	years, days, err := MaturityYears(b.SettlementDate, b.MaturityDate)
+	if err != nil {
+		return err
+	}
+
+	b.MaturityYears = years
+	b.MaturityDays = days
+
+	if b.NextCouponDate.IsZero() {
+		t := time.Date(
+			b.SettlementDate.Year(),
+			b.MaturityDate.Month(),
+			b.MaturityDate.Day(),
+			0,
+			0,
+			0,
+			0,
+			b.MaturityDate.Location(),
+		)
+
+		if b.SettlementDate.After(t) {
+			t = t.AddDate(0, 6, 0)
+		} else {
+			t2 := t.AddDate(0, -6, 0)
+			if b.SettlementDate.Before(t2) {
+				t = t2
+			}
+		}
+
+		b.NextCouponDate = t
+	}
+
+	if b.PrevCouponDate.IsZero() {
+		b.PrevCouponDate = b.NextCouponDate.AddDate(0, -6, 0)
+	}
+
+	b.RemainingDays = uint16(math.Floor(b.NextCouponDate.Sub(b.SettlementDate).Hours() / 24))
+	b.AccruedDays = uint16(math.Floor(b.SettlementDate.Sub(b.PrevCouponDate).Hours() / 24))
+	b.CouponPeriodDays = uint16(math.Floor(b.NextCouponDate.Sub(b.PrevCouponDate).Hours() / 24))
+
+	// TODO need to account for different day-count conventions 360/30 vs Actual/Actual
+	b.CouponPeriods = (uint16(b.MaturityYears) * 2) + uint16(math.Ceil(float64(b.MaturityDays)/365.0*2))
+
+	if b.YieldToMaturity == 0 {
+		estimatedYTM := EstimatedYieldToMaturity(
+			b.Coupon,
+			b.FacePrice,
+			b.CleanPrice,
+			float64(b.MaturityYears)+float64(b.MaturityDays)/365.0,
+		)
+
+		var (
+			ytm float64
+			err error
+		)
+
+		if b.DirtyPrice > 0 {
+			ytm, err = DirtyPriceYieldToMaturity(
+				b.Coupon,
+				b.FacePrice,
+				b.DirtyPrice,
+				2,
+				b.CouponPeriods,
+				b.RemainingDays,
+				b.CouponPeriodDays,
+				estimatedYTM,
+				0.001,
+				1_000,
+			)
+		} else {
+			ytm, err = CleanPriceYieldToMaturity(
+				b.Coupon,
+				b.FacePrice,
+				b.CleanPrice,
+				2,
+				b.CouponPeriods,
+				b.RemainingDays,
+				b.CouponPeriodDays,
+				estimatedYTM,
+				0.001,
+				1_000,
+			)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("YTM: %s %.8f %.8f %.8f %.8f %d %d %d %s\n",
+			b.Desc,
+			ytm,
+			b.YieldToMaturity,
+			b.Coupon,
+			b.CleanPrice,
+			b.CouponPeriods,
+			b.RemainingDays,
+			b.CouponPeriodDays,
+			b.NextCouponDate.Format("2006-01-02"),
+		)
+
+		b.YieldToMaturity = ytm
+	}
+
+	if b.CleanPrice == 0 && b.DirtyPrice == 0 {
+		b.DirtyPrice = DirtyPrice(
+			b.Coupon,
+			b.YieldToMaturity,
+			b.FacePrice,
+			2,
+			b.CouponPeriods,
+			b.RemainingDays,
+			b.CouponPeriodDays,
+		)
+	}
+
+	accruedAmount := float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
+
+	fmt.Printf("Accrued amount: %.4f\n", accruedAmount)
+
+	if b.CleanPrice == 0 {
+		b.CleanPrice = b.DirtyPrice - accruedAmount
+	} else if b.DirtyPrice == 0 {
+		b.DirtyPrice = b.CleanPrice + accruedAmount
+	}
+
+	fmt.Printf(
+		"%s S=%s, M=%s, NC=%s, Remaining days=%d, Accrued days=%d, Coupon period days=%d, Coupon=%.4f, Clean=%.4f, Dirty=%.4f, ytm=%.4f, CP=%d\n",
+		b.Desc,
+		b.SettlementDate.Format("2006-01-02"),
+		b.MaturityDate.Format("2006-01-02"),
+		b.NextCouponDate.Format("2006-01-02"),
+		b.RemainingDays,
+		b.AccruedDays,
+		b.CouponPeriodDays,
+		b.Coupon,
+		b.CleanPrice,
+		b.DirtyPrice,
+		b.YieldToMaturity,
+		b.CouponPeriods,
+	)
+
+	return nil
 }

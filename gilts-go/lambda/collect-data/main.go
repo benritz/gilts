@@ -33,6 +33,11 @@ func collectData() error {
 	// collector := collect.NewDataDividendCollector()
 	collector := collect.NewDMOCollector()
 
+	collected, err := collector.Collect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to collect data: %v", err)
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)
@@ -40,7 +45,7 @@ func collectData() error {
 
 	s3Client := s3.NewFromConfig(cfg)
 
-	if err := collect.CollectToS3(ctx, collector, s3Client, path); err != nil {
+	if err := collect.StoreToS3(ctx, collected, s3Client, path); err != nil {
 		return err
 	}
 

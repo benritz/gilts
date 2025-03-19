@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,10 +23,10 @@ func NewDMOCollector() *DMOCollector {
 	return &DMOCollector{}
 }
 
-func (c *DMOCollector) Collect(ctx context.Context) ([]*types.Gilt, error) {
-	now := time.Now().Add(-72 * time.Hour)
+func (c *DMOCollector) Collect(ctx context.Context) (*CollectedBonds, error) {
+	t := time.Now().UTC()
 
-	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", now.Day(), now.Month(), now.Year())
+	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", t.Day(), t.Month(), t.Year())
 	url := "https://www.dmo.gov.uk/umbraco/surface/DataExport/GetDataExport?reportCode=D10B&exportFormatValue=xls&parameters=" + url.QueryEscape(params)
 
 	client := &http.Client{}
@@ -63,78 +64,175 @@ func (c *DMOCollector) Collect(ctx context.Context) ([]*types.Gilt, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer wb.Close()
 
-	data := []*types.Gilt{}
+	collected := NewCollectedBonds(SourceDMO, t)
+	parsed := 0
 
-	sheets, _ := wb.List()
+	sheets, err := wb.List()
+	if err != nil {
+		return nil, err
+	}
 	for _, sheetName := range sheets {
-		sheet, _ := wb.Get(sheetName)
+		sheet, err := wb.Get(sheetName)
+
+		if err != nil {
+			return nil, err
+		}
+
 		for sheet.Next() {
 			row := sheet.Strings()
-			gilt, _ := c.parseRow(row)
-			if gilt != nil {
-				data = append(data, gilt)
+			c := c.parseRow(t, row)
+			if c != nil {
+				collected.AddBond(c)
+				parsed++
 			}
 		}
 	}
-	wb.Close()
 
-	fmt.Printf("Parsed %d rows\n", len(data))
-	for _, gilt := range data {
-		fmt.Printf("Gilt: %v\n", *gilt)
-	}
+	fmt.Printf("Parsed %d rows\n", parsed)
 
-	return data, nil
+	return collected, nil
 }
+
+var SourceDMO = "DMO"
 
 func (d *DMOCollector) Source() string {
-	return "DMO"
+	return SourceDMO
 }
 
-func (c *DMOCollector) parseRow(row []string) (*types.Gilt, error) {
+func (c *DMOCollector) parseRow(t time.Time, row []string) *CollectedBond {
 	if len(row) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	isin := row[0]
 
 	if !strings.HasPrefix(isin, "GB") {
-		return nil, nil
+		return nil
 	}
 
-	gilt := &types.Gilt{}
-	errs := []error{}
+	b := types.NewUKGilt(SourceDMO, t)
+	b.ISIN = strings.TrimSpace(isin)
+	b.Desc = strings.TrimSpace(row[1])
 
-	gilt.Source = "DMO"
-	gilt.CaptureDate = time.Now()
-	gilt.ISIN = strings.TrimSpace(isin)
-	gilt.Desc = strings.TrimSpace(row[1])
+	cb := &CollectedBond{Bond: b}
 
-	cell := strings.TrimSpace(row[2])
-	if price, err := strconv.ParseFloat(cell, 32); err == nil {
-		gilt.CleanPrice = float64(price)
+	if coupon, err := parseCouponPercentage(b.Desc); err == nil {
+		b.Coupon = coupon
 	} else {
-		errs = append(errs, fmt.Errorf("failed to parse price '%s': %v", cell, err))
+		cb.SetError(types.ErrInvalidCoupon)
 	}
 
-	cell = strings.TrimSpace(row[3])
-	if price, err := strconv.ParseFloat(cell, 32); err == nil {
-		gilt.DirtyPrice = float64(price)
+	if cleanPrice, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 32); err == nil {
+		b.CleanPrice = float64(cleanPrice)
 	} else {
-		errs = append(errs, fmt.Errorf("failed to parse price '%s': %v", cell, err))
+		cb.SetError(types.ErrInvalidCleanPrice)
 	}
 
-	cell = strings.TrimSpace(row[7])
-	if ts, err := time.Parse("02-Jan-2006", cell); err == nil {
-		gilt.MaturityDate = ts
-		gilt.MaturityYears = types.MaturityYears(gilt.CaptureDate, gilt.MaturityDate)
+	if dirtyPrice, err := strconv.ParseFloat(strings.TrimSpace(row[3]), 32); err == nil {
+		b.DirtyPrice = float64(dirtyPrice)
 	} else {
-		errs = append(errs, fmt.Errorf("failed to parse date '%s': %v", cell, err))
+		cb.SetError(types.ErrInvalidDirtyPrice)
 	}
 
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("failed to parse gilt data: %v", errs)
+	if ts, err := time.Parse("02-Jan-2006", strings.TrimSpace(row[7])); err == nil {
+		b.MaturityDate = ts
+	} else {
+		cb.SetError(types.ErrInvalidMaturityDate)
 	}
 
-	return gilt, nil
+	if cb.Err == nil {
+		cb.Err = types.CompleteBond(b)
+	}
+
+	return cb
+}
+
+// parseCouponPercentage parses a coupon percentage string it the following formats
+// 0 5/8% Treasury Gilt 2025,
+// 2% Treasury Gilt 2025,
+// 3½% Treasury Gilt 2025
+//
+//	s: bond description
+//
+// Returns:
+//
+//	Coupon percentage
+func parseCouponPercentage(desc string) (float64, error) {
+	re := regexp.MustCompile(`^(\d+(?:\s+\d+\/\d+)?|\d+\/\d+|\d+|\d[¼½¾])(%)`)
+	match := re.FindStringSubmatch(desc)
+
+	if len(match) < 3 {
+		return 0, types.ErrInvalidCoupon
+	}
+
+	m := match[1]
+
+	// convert ½, ¼, ¾ suffixes
+	trimLast := func(s string) string {
+		r := []rune(s)
+		return string(r[0 : len(r)-1])
+	}
+	if strings.HasSuffix(m, "½") {
+		m = trimLast(m) + " 1/2"
+	} else if strings.HasSuffix(m, "¼") {
+		m = trimLast(m) + " 1/4"
+	} else if strings.HasSuffix(m, "¾") {
+		m = trimLast(m) + " 3/4"
+	}
+
+	if strings.Contains(m, "/") {
+		parts := strings.Split(m, " ")
+		if len(parts) == 2 {
+			// Mixed number
+			whole, err := strconv.Atoi(parts[0])
+			if err != nil {
+				return 0, types.ErrInvalidCoupon
+			}
+			fractionParts := strings.Split(parts[1], "/")
+			if len(fractionParts) != 2 {
+				return 0, types.ErrInvalidCoupon
+			}
+			num, err := strconv.Atoi(fractionParts[0])
+			if err != nil {
+				return 0, types.ErrInvalidCoupon
+			}
+			den, err := strconv.Atoi(fractionParts[1])
+			if err != nil {
+				return 0, types.ErrInvalidCoupon
+			}
+			if den == 0 {
+				return 0, types.ErrInvalidCoupon
+			}
+			return float64(whole) + float64(num)/float64(den), nil
+		} else if len(parts) == 1 {
+			// Fraction only
+			fractionParts := strings.Split(parts[0], "/")
+			if len(fractionParts) != 2 {
+				return 0, types.ErrInvalidCoupon
+			}
+			num, err := strconv.Atoi(fractionParts[0])
+			if err != nil {
+				return 0, types.ErrInvalidCoupon
+			}
+			den, err := strconv.Atoi(fractionParts[1])
+			if err != nil {
+				return 0, types.ErrInvalidCoupon
+			}
+			if den == 0 {
+				return 0, types.ErrInvalidCoupon
+			}
+			return float64(num) / float64(den), nil
+		}
+	} else {
+		// Whole number
+		val, err := strconv.ParseFloat(m, 64)
+		if err != nil {
+			return 0, types.ErrInvalidCoupon
+		}
+		return val, nil
+	}
+
+	return 0, types.ErrInvalidCoupon
 }

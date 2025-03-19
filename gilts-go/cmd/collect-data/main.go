@@ -22,9 +22,9 @@ func getAwsConfig(ctx context.Context, profile string) (aws.Config, error) {
 	return config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile(profile))
 }
 
-func collectToS3(
+func storeToS3(
 	ctx context.Context,
-	collector collect.Collector,
+	collected *collect.CollectedBonds,
 	profile string,
 	s3Path *collect.S3Path,
 ) error {
@@ -35,7 +35,7 @@ func collectToS3(
 
 	s3Client := s3.NewFromConfig(cfg)
 
-	if err := collect.CollectToS3(ctx, collector, s3Client, s3Path); err != nil {
+	if err := collect.StoreToS3(ctx, collected, s3Client, s3Path); err != nil {
 		return fmt.Errorf("failed to collect data to S3: %v", err)
 	}
 
@@ -61,12 +61,16 @@ func main() {
 	// collector := collect.NewDividendDataCollector()
 	collector := collect.NewDMOCollector()
 
-	var err error
+	collected, err := collector.Collect(ctx)
+	if err != nil {
+		fmt.Printf("Failed to collect data: %v\n", err)
+		os.Exit(1)
+	}
 
 	if s3Path, _ := collect.ParseS3(dst); s3Path != nil {
-		err = collectToS3(ctx, collector, *profile, s3Path)
+		err = storeToS3(ctx, collected, *profile, s3Path)
 	} else {
-		err = collect.CollectToPath(ctx, collector, dst)
+		err = collect.StoreToPath(ctx, collected, dst)
 	}
 
 	if err != nil {

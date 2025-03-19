@@ -2,63 +2,73 @@ package collect
 
 import (
 	"benritz/gilts/internal/types"
+	"path/filepath"
+	"time"
 
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/parquet-go/parquet-go"
 )
 
+type CollectedBond struct {
+	Bond *types.Bond
+	Err  error
+}
+
+func (c *CollectedBond) SetError(err error) {
+	if c.Err != nil {
+		c.Err = err
+	}
+}
+
+type CollectedBonds struct {
+	Bonds          []*types.Bond
+	Failures       []*CollectedBond
+	Source         string
+	SettlementDate time.Time
+}
+
+func (c *CollectedBonds) AddBond(cb *CollectedBond) {
+	if cb.Err == nil {
+		c.Bonds = append(c.Bonds, cb.Bond)
+	} else {
+		c.Failures = append(c.Failures, cb)
+	}
+}
+
+func NewCollectedBonds(source string, date time.Time) *CollectedBonds {
+	return &CollectedBonds{
+		Source:         source,
+		SettlementDate: date,
+		Bonds:          []*types.Bond{},
+		Failures:       []*CollectedBond{},
+	}
+}
+
 type Collector interface {
-	Collect(ctx context.Context) ([]*types.Gilt, error)
+	Collect(ctx context.Context) (*CollectedBonds, error)
 	Source() string
 }
 
-func StoreToWriter(gilts []*types.Gilt, output io.Writer) error {
-	writer := parquet.NewGenericWriter[*types.Gilt](output)
+func writeBonds(bonds []*types.Bond, output io.Writer) error {
+	writer := parquet.NewGenericWriter[*types.Bond](output)
 	defer writer.Close()
 
-	if _, err := writer.Write(gilts); err != nil {
+	if _, err := writer.Write(bonds); err != nil {
 		return fmt.Errorf("failed to write records: %w", err)
 	}
 
 	return nil
 }
 
-func StoreToPath(gilts []*types.Gilt, path string) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
-
-	return StoreToWriter(gilts, file)
-}
-
-func CollectToWriter(ctx context.Context, collector Collector, output io.Writer) error {
-	data, err := collector.Collect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to collect data: %v", err)
-	}
-
-	fmt.Printf("Collected %d records\n", len(data))
-
-	if err := StoreToWriter(data, output); err != nil {
-		return fmt.Errorf("failed to save data to parquet format: %v", err)
-	}
-
-	return nil
-}
-
-func CollectToPath(ctx context.Context, collector Collector, basepath string) error {
-	date := time.Now()
+func StoreToPath(ctx context.Context, collected *CollectedBonds, basepath string) error {
+	date := collected.SettlementDate
 
 	path := fmt.Sprintf(
 		"%s%c%04d%c%02d%c%02d",
@@ -75,7 +85,7 @@ func CollectToPath(ctx context.Context, collector Collector, basepath string) er
 		return err
 	}
 
-	name := fmt.Sprintf("%s%c%s.parquet", path, filepath.Separator, collector.Source())
+	name := fmt.Sprintf("%s%c%s.parquet", path, filepath.Separator, collected.Source)
 
 	file, err := os.Create(name)
 	if err != nil {
@@ -83,11 +93,7 @@ func CollectToPath(ctx context.Context, collector Collector, basepath string) er
 	}
 	defer file.Close()
 
-	if err := CollectToWriter(ctx, collector, file); err != nil {
-		return fmt.Errorf("failed to collect data: %v", err)
-	}
-
-	return nil
+	return writeBonds(collected.Bonds, file)
 }
 
 type S3Path struct {
@@ -120,9 +126,7 @@ func ParseS3(path string) (*S3Path, error) {
 	}, nil
 }
 
-func CollectToS3(ctx context.Context, collector Collector, s3Client *s3.Client, dst *S3Path) error {
-	date := time.Now()
-
+func StoreToS3(ctx context.Context, collected *CollectedBonds, s3Client *s3.Client, dst *S3Path) error {
 	tmp, err := os.CreateTemp("", "gilt-*.parquet")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %v", err)
@@ -130,8 +134,8 @@ func CollectToS3(ctx context.Context, collector Collector, s3Client *s3.Client, 
 	defer tmp.Close()
 	defer os.Remove(tmp.Name())
 
-	if err := CollectToWriter(ctx, collector, tmp); err != nil {
-		return fmt.Errorf("failed to collect data: %v", err)
+	if err := writeBonds(collected.Bonds, tmp); err != nil {
+		return err
 	}
 
 	if _, err := tmp.Seek(0, 0); err != nil {
@@ -145,12 +149,14 @@ func CollectToS3(ctx context.Context, collector Collector, s3Client *s3.Client, 
 		fmt.Printf("File size: %d bytes\n", stat.Size())
 	}
 
+	date := collected.SettlementDate
+
 	key := fmt.Sprintf(
 		"%04d/%02d/%02d/%s.parquet",
 		date.UTC().Year(),
 		date.UTC().Month(),
 		date.UTC().Day(),
-		collector.Source(),
+		collected.Source,
 	)
 
 	if dst.Prefix != "" {
