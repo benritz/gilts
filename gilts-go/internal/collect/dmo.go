@@ -29,6 +29,8 @@ func (c *DMOCollector) Collect(ctx context.Context, date time.Time) (*CollectedB
 	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", date.Day(), date.Month(), date.Year())
 	url := "https://www.dmo.gov.uk/umbraco/surface/DataExport/GetDataExport?reportCode=D10B&exportFormatValue=xls&parameters=" + url.QueryEscape(params)
 
+	fmt.Printf("Fetching %s\n", url)
+
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -52,11 +54,13 @@ func (c *DMOCollector) Collect(ctx context.Context, date time.Time) (*CollectedB
 	}
 	defer os.Remove(tmp.Name())
 
-	_, err = io.Copy(tmp, resp.Body)
+	size, err := io.Copy(tmp, resp.Body)
 	tmp.Close()
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("Downloaded %d bytes\n", size)
 
 	wb, err := grate.Open(tmp.Name())
 	if err != nil {

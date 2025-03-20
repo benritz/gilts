@@ -7,7 +7,6 @@ RUN mkdir -p dist && \
     go build -o dist/main lambda/collect-data/main.go
 
 FROM public.ecr.aws/lambda/provided:al2023
-LABEL author="support@ibase.com"
 
 COPY --from=build /app/dist/main ./main
 
