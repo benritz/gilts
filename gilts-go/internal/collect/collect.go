@@ -16,6 +16,10 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
+var (
+	ErrInvaidRow = fmt.Errorf("invalid row")
+)
+
 type CollectedBond struct {
 	Bond *types.Bond
 	Err  error
@@ -52,7 +56,7 @@ func NewCollectedBonds(source string, date time.Time) *CollectedBonds {
 }
 
 type Collector interface {
-	Collect(ctx context.Context) (*CollectedBonds, error)
+	Collect(ctx context.Context, date time.Time) (*CollectedBonds, error)
 	Source() string
 }
 
@@ -67,7 +71,7 @@ func writeBonds(bonds []*types.Bond, output io.Writer) error {
 	return nil
 }
 
-func StoreToPath(ctx context.Context, collected *CollectedBonds, basepath string) error {
+func StoreToPath(ctx context.Context, collected *CollectedBonds, basepath string) (string, error) {
 	date := collected.SettlementDate
 
 	path := fmt.Sprintf(
@@ -82,18 +86,22 @@ func StoreToPath(ctx context.Context, collected *CollectedBonds, basepath string
 	)
 
 	if err := os.MkdirAll(path, os.ModePerm); err != nil {
-		return err
+		return "", err
 	}
 
-	name := fmt.Sprintf("%s%c%s.parquet", path, filepath.Separator, collected.Source)
+	outPath := fmt.Sprintf("%s%c%s.parquet", path, filepath.Separator, collected.Source)
 
-	file, err := os.Create(name)
+	file, err := os.Create(outPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer file.Close()
 
-	return writeBonds(collected.Bonds, file)
+	if err := writeBonds(collected.Bonds, file); err != nil {
+		return "", err
+	}
+
+	return outPath, nil
 }
 
 type S3Path struct {
@@ -126,27 +134,20 @@ func ParseS3(path string) (*S3Path, error) {
 	}, nil
 }
 
-func StoreToS3(ctx context.Context, collected *CollectedBonds, s3Client *s3.Client, dst *S3Path) error {
+func StoreToS3(ctx context.Context, collected *CollectedBonds, s3Client *s3.Client, dst *S3Path) (string, error) {
 	tmp, err := os.CreateTemp("", "gilt-*.parquet")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %v", err)
+		return "", fmt.Errorf("failed to create temp file: %v", err)
 	}
 	defer tmp.Close()
 	defer os.Remove(tmp.Name())
 
 	if err := writeBonds(collected.Bonds, tmp); err != nil {
-		return err
+		return "", err
 	}
 
 	if _, err := tmp.Seek(0, 0); err != nil {
-		return fmt.Errorf("failed to seek to start of file: %w", err)
-	}
-
-	fmt.Printf("Saved data to %s\n", tmp.Name())
-	if stat, err := os.Stat(tmp.Name()); err != nil {
-		return fmt.Errorf("failed to stat file: %w", err)
-	} else {
-		fmt.Printf("File size: %d bytes\n", stat.Size())
+		return "", fmt.Errorf("failed to seek to start of file: %w", err)
 	}
 
 	date := collected.SettlementDate
@@ -170,8 +171,10 @@ func StoreToS3(ctx context.Context, collected *CollectedBonds, s3Client *s3.Clie
 	}
 
 	if _, err := s3Client.PutObject(ctx, input); err != nil {
-		return fmt.Errorf("failed to upload file to s3://%s/%s: %w", dst.Bucket, key, err)
+		return "", fmt.Errorf("failed to upload file to s3://%s/%s: %w", dst.Bucket, key, err)
 	}
 
-	return nil
+	outPath := fmt.Sprintf("s3://%s/%s", dst.Bucket, key)
+
+	return outPath, nil
 }

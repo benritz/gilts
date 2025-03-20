@@ -16,6 +16,8 @@ import (
 	"github.com/pbnjay/grate"
 )
 
+var SourceDMO = "DMO"
+
 type DMOCollector struct {
 }
 
@@ -23,10 +25,8 @@ func NewDMOCollector() *DMOCollector {
 	return &DMOCollector{}
 }
 
-func (c *DMOCollector) Collect(ctx context.Context) (*CollectedBonds, error) {
-	t := time.Now().UTC()
-
-	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", t.Day(), t.Month(), t.Year())
+func (c *DMOCollector) Collect(ctx context.Context, date time.Time) (*CollectedBonds, error) {
+	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", date.Day(), date.Month(), date.Year())
 	url := "https://www.dmo.gov.uk/umbraco/surface/DataExport/GetDataExport?reportCode=D10B&exportFormatValue=xls&parameters=" + url.QueryEscape(params)
 
 	client := &http.Client{}
@@ -52,13 +52,11 @@ func (c *DMOCollector) Collect(ctx context.Context) (*CollectedBonds, error) {
 	}
 	defer os.Remove(tmp.Name())
 
-	size, err := io.Copy(tmp, resp.Body)
+	_, err = io.Copy(tmp, resp.Body)
 	tmp.Close()
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Printf("Downloaded %d bytes\n", size)
 
 	wb, err := grate.Open(tmp.Name())
 	if err != nil {
@@ -66,7 +64,7 @@ func (c *DMOCollector) Collect(ctx context.Context) (*CollectedBonds, error) {
 	}
 	defer wb.Close()
 
-	collected := NewCollectedBonds(SourceDMO, t)
+	collected := NewCollectedBonds(SourceDMO, date)
 	parsed := 0
 
 	sheets, err := wb.List()
@@ -82,39 +80,44 @@ func (c *DMOCollector) Collect(ctx context.Context) (*CollectedBonds, error) {
 
 		for sheet.Next() {
 			row := sheet.Strings()
-			c := c.parseRow(t, row)
-			if c != nil {
+			c, err := c.parseRow(date, row)
+			if err == nil {
 				collected.AddBond(c)
 				parsed++
 			}
 		}
 	}
 
-	fmt.Printf("Parsed %d rows\n", parsed)
+	if parsed == 0 {
+		return nil, types.ErrDataUnavailable
+	}
 
 	return collected, nil
 }
-
-var SourceDMO = "DMO"
 
 func (d *DMOCollector) Source() string {
 	return SourceDMO
 }
 
-func (c *DMOCollector) parseRow(t time.Time, row []string) *CollectedBond {
+func (c *DMOCollector) parseRow(date time.Time, row []string) (*CollectedBond, error) {
 	if len(row) == 0 {
-		return nil
+		return nil, ErrInvaidRow
 	}
 
 	isin := row[0]
 
 	if !strings.HasPrefix(isin, "GB") {
-		return nil
+		return nil, ErrInvaidRow
 	}
 
-	b := types.NewUKGilt(SourceDMO, t)
+	b := types.NewUKGilt(SourceDMO, date)
 	b.ISIN = strings.TrimSpace(isin)
 	b.Desc = strings.TrimSpace(row[1])
+
+	// unsupported bonds
+	if strings.Contains(b.Desc, "Index-linked") {
+		return nil, types.ErrUnsupportedBond
+	}
 
 	cb := &CollectedBond{Bond: b}
 
@@ -146,7 +149,7 @@ func (c *DMOCollector) parseRow(t time.Time, row []string) *CollectedBond {
 		cb.Err = types.CompleteBond(b)
 	}
 
-	return cb
+	return cb, nil
 }
 
 // parseCouponPercentage parses a coupon percentage string it the following formats

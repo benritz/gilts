@@ -299,6 +299,9 @@ func EstimatedYieldToMaturity(C, F, P, n float64) float64 {
 
 var (
 	ErrNilBond                           = fmt.Errorf("bond is nil")
+	ErrMissingSettlementDate             = fmt.Errorf("missing settlement date")
+	ErrDataUnavailable                   = fmt.Errorf("data unavailable")
+	ErrUnsupportedBond                   = fmt.Errorf("unsupported bond")
 	ErrInvalidTicker                     = fmt.Errorf("invalid ticker")
 	ErrInvalidCoupon                     = fmt.Errorf("invalid coupon")
 	ErrInvalidDesc                       = fmt.Errorf("invalid description")
@@ -440,18 +443,6 @@ func CompleteBond(b *Bond) error {
 			return err
 		}
 
-		fmt.Printf("YTM: %s %.8f %.8f %.8f %.8f %d %d %d %s\n",
-			b.Desc,
-			ytm,
-			b.YieldToMaturity,
-			b.Coupon,
-			b.CleanPrice,
-			b.CouponPeriods,
-			b.RemainingDays,
-			b.CouponPeriodDays,
-			b.NextCouponDate.Format("2006-01-02"),
-		)
-
 		b.YieldToMaturity = ytm
 	}
 
@@ -469,29 +460,11 @@ func CompleteBond(b *Bond) error {
 
 	accruedAmount := float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
 
-	fmt.Printf("Accrued amount: %.4f\n", accruedAmount)
-
 	if b.CleanPrice == 0 {
 		b.CleanPrice = b.DirtyPrice - accruedAmount
 	} else if b.DirtyPrice == 0 {
 		b.DirtyPrice = b.CleanPrice + accruedAmount
 	}
-
-	fmt.Printf(
-		"%s S=%s, M=%s, NC=%s, Remaining days=%d, Accrued days=%d, Coupon period days=%d, Coupon=%.4f, Clean=%.4f, Dirty=%.4f, ytm=%.4f, CP=%d\n",
-		b.Desc,
-		b.SettlementDate.Format("2006-01-02"),
-		b.MaturityDate.Format("2006-01-02"),
-		b.NextCouponDate.Format("2006-01-02"),
-		b.RemainingDays,
-		b.AccruedDays,
-		b.CouponPeriodDays,
-		b.Coupon,
-		b.CleanPrice,
-		b.DirtyPrice,
-		b.YieldToMaturity,
-		b.CouponPeriods,
-	)
 
 	return nil
 }

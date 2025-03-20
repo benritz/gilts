@@ -2,6 +2,7 @@ package main
 
 import (
 	"benritz/gilts/internal/collect"
+	"time"
 
 	"context"
 	"fmt"
@@ -33,9 +34,9 @@ func collectData() error {
 	// collector := collect.NewDataDividendCollector()
 	collector := collect.NewDMOCollector()
 
-	collected, err := collector.Collect(ctx)
+	collected, err := collector.Collect(ctx, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to collect data: %v", err)
+		return err
 	}
 
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -45,9 +46,12 @@ func collectData() error {
 
 	s3Client := s3.NewFromConfig(cfg)
 
-	if err := collect.StoreToS3(ctx, collected, s3Client, path); err != nil {
+	outPath, err := collect.StoreToS3(ctx, collected, s3Client, path)
+	if err != nil {
 		return err
 	}
+
+	fmt.Printf("Stored data to %s\n", outPath)
 
 	return nil
 }

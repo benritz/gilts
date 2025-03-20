@@ -106,9 +106,9 @@ export class CollectDataStack extends cdk.Stack {
 
     new scheduler.Schedule(this, 'scheduleDaily', {
       scheduleName: `gilts-collect-data-daily-${uniqueId}`,
-      description: 'Collect gilts data daily at 04:00 UTC',
+      description: 'Collect gilts data daily at 12:00 UTC',
       schedule: scheduler.ScheduleExpression.cron({
-          hour: '4',
+          hour: '12',
           minute: '0',
       }),
       target: new scheduler_targets.SqsSendMessage(queue),

@@ -2,6 +2,8 @@ package main
 
 import (
 	"benritz/gilts/internal/collect"
+	"benritz/gilts/internal/types"
+	"time"
 
 	"context"
 	"flag"
@@ -27,19 +29,20 @@ func storeToS3(
 	collected *collect.CollectedBonds,
 	profile string,
 	s3Path *collect.S3Path,
-) error {
+) (string, error) {
 	cfg, err := getAwsConfig(ctx, profile)
 	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %v", err)
+		return "", fmt.Errorf("failed to load AWS config: %v", err)
 	}
 
 	s3Client := s3.NewFromConfig(cfg)
 
-	if err := collect.StoreToS3(ctx, collected, s3Client, s3Path); err != nil {
-		return fmt.Errorf("failed to collect data to S3: %v", err)
+	outPath, err := collect.StoreToS3(ctx, collected, s3Client, s3Path)
+	if err != nil {
+		return "", fmt.Errorf("failed to store data to S3: %v", err)
 	}
 
-	return nil
+	return outPath, nil
 }
 
 func main() {
@@ -61,21 +64,28 @@ func main() {
 	// collector := collect.NewDividendDataCollector()
 	collector := collect.NewDMOCollector()
 
-	collected, err := collector.Collect(ctx)
+	collected, err := collector.Collect(ctx, time.Now().AddDate(0, 0, -1))
 	if err != nil {
-		fmt.Printf("Failed to collect data: %v\n", err)
+		switch err {
+		case types.ErrDataUnavailable:
+			fmt.Printf("Data unavailable\n")
+		default:
+			fmt.Printf("Failed to collect data: %v\n", err)
+		}
 		os.Exit(1)
 	}
 
+	var outPath string
 	if s3Path, _ := collect.ParseS3(dst); s3Path != nil {
-		err = storeToS3(ctx, collected, *profile, s3Path)
+		outPath, err = storeToS3(ctx, collected, *profile, s3Path)
 	} else {
-		err = collect.StoreToPath(ctx, collected, dst)
+		outPath, err = collect.StoreToPath(ctx, collected, dst)
 	}
 
 	if err != nil {
-		fmt.Printf("Failed to collect data: %v\n", err)
-	} else {
-		fmt.Printf("Data collected successfully to %s\n", dst)
+		fmt.Printf("Failed to store data: %v\n", err)
+		os.Exit(1)
 	}
+
+	fmt.Printf("Stored to %s\n", outPath)
 }
