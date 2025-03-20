@@ -64,7 +64,7 @@ func main() {
 	// collector := collect.NewDividendDataCollector()
 	collector := collect.NewDMOCollector()
 
-	collected, err := collector.Collect(ctx, time.Now().AddDate(0, 0, -1))
+	collected, err := collector.Collect(ctx, time.Now())
 	if err != nil {
 		switch err {
 		case types.ErrDataUnavailable:

@@ -62,6 +62,13 @@ func (c *DMOCollector) Collect(ctx context.Context, date time.Time) (*CollectedB
 
 	fmt.Printf("Downloaded %d bytes to %s\n", size, tmp.Name())
 
+	stat, err := os.Stat(tmp.Name())
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("File %s size: %d bytes\n", stat.Name(), stat.Size())
+
 	wb, err := grate.Open(tmp.Name())
 	if err != nil {
 		return nil, err
