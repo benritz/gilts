@@ -6,18 +6,19 @@ import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
+import { WaitForPipeline } from './wait-for-pipeline';
 
 export type ContainerImageSpec = {
     name: string
-    ecrRepoGroup: string
-    ecrRepoName?: string
     gitRepoUrl: string
+    gitRepoBranch?: string
     gitRepoDockerfilePath: string
     gitRepoConnectionArn: string
+    buildOnPush: boolean
+    waitForPipeline: boolean
 }
 
 export type ContainerImagesProps = {
-    projectName: string
     specs: ContainerImageSpec[],
     artifactBucket?: s3.IBucket
 }
@@ -29,7 +30,6 @@ export class ContainerImages extends Construct {
         super(scope, id)
 
         const {
-            projectName,
             specs,
             artifactBucket
         } = props
@@ -59,7 +59,6 @@ export class ContainerImages extends Construct {
           })
       
         const buildProject = new codebuild.PipelineProject(this, 'build-project', {
-            projectName,
             environment: {
               computeType: codebuild.ComputeType.SMALL,
               buildImage: codebuild.LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0
@@ -68,7 +67,6 @@ export class ContainerImages extends Construct {
             logging: {
                 cloudWatch: {
                     logGroup: new logs.LogGroup(this, 'build-project-logs', {
-                        logGroupName: `/aws/codebuild/${projectName}`,
                         removalPolicy: cdk.RemovalPolicy.DESTROY,
                         retention: logs.RetentionDays.FIVE_DAYS
                     }),
@@ -80,29 +78,15 @@ export class ContainerImages extends Construct {
             ['latest', buildProject]
         ])
 
-        const images = specs.reduce((acc, spec, n) => {
-            const { 
-                name, 
-                ecrRepoGroup, 
-                ecrRepoName, 
-                gitRepoUrl, 
-                gitRepoConnectionArn,
-                gitRepoDockerfilePath 
-            } = spec
-
-            const image = new ContainerImage(this, `container-image-${n}`, {
-                name,
-                ecrRepoGroup,
-                ecrRepoName,
-                gitRepoUrl,
-                gitRepoConnectionArn,
-                gitRepoDockerfilePath,
-                builds,
-                artifactBucket
-            })
-
-            return acc.set(name, image)
-        }, new Map<string, ContainerImage>())
+        const images = specs.reduce(
+            (acc, spec, n) => 
+                acc.set(spec.name, new ContainerImage(this, `container-image-${n}`, { 
+                    ...spec, 
+                    builds,
+                    artifactBucket,
+                }))
+            , new Map<string, ContainerImage>()
+        )
 
         this.images = images
     }
@@ -110,13 +94,14 @@ export class ContainerImages extends Construct {
 
 export type ContainerImageProps = {
     name: string
-    ecrRepoGroup: string
-    ecrRepoName?: string
     gitRepoUrl: string
+    gitRepoBranch?: string
     gitRepoConnectionArn: string
     gitRepoDockerfilePath: string
     builds: Map<string, codebuild.PipelineProject>
-    artifactBucket?: s3.IBucket
+    artifactBucket?: s3.IBucket,
+    buildOnPush: boolean,
+    waitForPipeline: boolean
 }
 
 const parseGitHubUrl = (url: string): { owner: string, repo: string } => {
@@ -132,7 +117,6 @@ const parseGitHubUrl = (url: string): { owner: string, repo: string } => {
 }
 
 export class ContainerImage extends Construct {
-    ecrRepoName: string
     ecrRepo: ecr.Repository
     pipeline: codepipeline.Pipeline
 
@@ -141,19 +125,17 @@ export class ContainerImage extends Construct {
 
         const {
             name,
-            ecrRepoGroup,
-            ecrRepoName,
             gitRepoUrl,
+            gitRepoBranch,
             gitRepoConnectionArn,
             gitRepoDockerfilePath,
             builds,
-            artifactBucket
+            artifactBucket,
+            buildOnPush,
+            waitForPipeline,
         } = props
 
-        this.ecrRepoName = `${ecrRepoGroup}/${ecrRepoName || name}`
-
         const ecrRepo = new ecr.Repository(this, 'ecrRepo', {
-            repositoryName: this.ecrRepoName,
             removalPolicy: cdk.RemovalPolicy.DESTROY,
             emptyOnDelete: true,
             imageScanOnPush: true,
@@ -172,7 +154,6 @@ export class ContainerImage extends Construct {
         this.ecrRepo = ecrRepo
 
         const pipeline = new codepipeline.Pipeline(this, 'pipeline', {
-            pipelineName: name,
             pipelineType: codepipeline.PipelineType.V2,
             artifactBucket,
         })
@@ -189,8 +170,8 @@ export class ContainerImage extends Construct {
             output: sourceArtifact,
             owner,
             repo,
-            branch: 'main',
-            triggerOnPush: true,
+            branch: gitRepoBranch ?? 'main',
+            triggerOnPush: buildOnPush,
         })
 
         pipeline.addStage({
@@ -227,5 +208,9 @@ export class ContainerImage extends Construct {
                 })
             )
         })
+
+        if (waitForPipeline) {
+            new WaitForPipeline(this, 'waitForPipeline', { pipeline })
+        }
     }
 }

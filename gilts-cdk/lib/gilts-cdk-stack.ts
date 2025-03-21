@@ -7,7 +7,6 @@ export class GiltsCdkStack extends cdk.Stack {
     super(scope, id, props);
 
     const {
-      GILTS_DATA_BUCKET_NAME,
       GILTS_GIT_REPO_URL,
       GILTS_GIT_REPO_CONNECTION_ARN
     } = process.env
@@ -21,7 +20,6 @@ export class GiltsCdkStack extends cdk.Stack {
     }
 
     new CollectDataStack(this, 'CollectDataStack', {
-      bucketName: GILTS_DATA_BUCKET_NAME,
       gitRepoUrl: GILTS_GIT_REPO_URL,
       gitRepoConnectionArn: GILTS_GIT_REPO_CONNECTION_ARN,
     });

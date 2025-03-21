@@ -5,33 +5,27 @@ import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as customRes from 'aws-cdk-lib/custom-resources'
-import { ContainerImage } from './container-image'
-import { pipeline } from 'stream'
+import * as codepipeline from 'aws-cdk-lib/aws-codepipeline'
 
 export type WaitForPipelineProps = {
-    containerImage: ContainerImage
+    pipeline: codepipeline.Pipeline
 }
 
 export class WaitForPipeline extends Construct {
     public constructor(scope: Construct, id: string, props: WaitForPipelineProps) {
         super(scope, id)
 
-        const { containerImage } = props
+        const { pipeline } = props
 
-        const uniqueId = cdk.Names.uniqueId(this).toLowerCase()
-
-        const waitForPipelineFnName = `wait-for-pl-${uniqueId}`
         const waitForPipelineFn = new nodejs.NodejsFunction(
             this, 
             'waitForPipelineFn', 
             {
-                functionName: waitForPipelineFnName,
                 runtime: lambda.Runtime.NODEJS_LATEST, 
                 architecture: lambda.Architecture.ARM_64,
                 memorySize: 128,
                 timeout: cdk.Duration.minutes(5),
                 logGroup: new logs.LogGroup(this, 'wait-for-pipeline-log-group', {
-                    logGroupName: `/aws/lambda/${waitForPipelineFnName}`,
                     removalPolicy: cdk.RemovalPolicy.DESTROY,
                     retention: logs.RetentionDays.FIVE_DAYS,
                 }),
@@ -50,6 +44,8 @@ export class WaitForPipeline extends Construct {
             actions: [
                 'codepipeline:GetPipelineExecution',
                 'codepipeline:ListPipelineExecutions',
+                'codepipeline:ExecutePipeline',
+                'codepipeline:GetPipelineExecution',
             ],
             resources: ["*"],
             conditions: {
@@ -62,13 +58,10 @@ export class WaitForPipeline extends Construct {
         const provider = new customRes.Provider(this, 'provider', {
             onEventHandler: waitForPipelineFn,
             logGroup: new logs.LogGroup(this, 'provider-log-group', {
-                logGroupName: `/aws/lambda/provider-${uniqueId}`,
                 removalPolicy: cdk.RemovalPolicy.DESTROY,
                 retention: logs.RetentionDays.FIVE_DAYS,
             }),        
         })
-
-        const { pipeline } = containerImage
 
         new cdk.CustomResource(this, 'customResource', {
             serviceToken: provider.serviceToken,

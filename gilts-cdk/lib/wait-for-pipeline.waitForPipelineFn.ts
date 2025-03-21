@@ -1,16 +1,47 @@
 import type { CdkCustomResourceEvent, CdkCustomResourceResponse, Context} from "aws-lambda"
-import { CodePipelineClient, ListPipelineExecutionsCommand, PipelineExecutionStatus } from "@aws-sdk/client-codepipeline"
+import { 
+    CodePipelineClient, 
+    GetPipelineExecutionCommand, 
+    ListPipelineExecutionsCommand, 
+    PipelineExecutionStatus,
+    StartPipelineExecutionCommand,
+} from "@aws-sdk/client-codepipeline"
 
 const { AWS_REGION } = process.env
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const waitForPipeline = async (
+const executePipeline = async (
     client: CodePipelineClient, 
     pipelineName: string
+): Promise<string|undefined> => {
+    const {pipelineExecutionId} = await client.send(new StartPipelineExecutionCommand({name: pipelineName}))
+
+    return pipelineExecutionId
+}
+
+const checkPipelineStatus = async (
+    client: CodePipelineClient, 
+    pipelineName: string,
+    pipelineExecutionId?: string,
 ): Promise<PipelineExecutionStatus|undefined> => {
+    if (pipelineExecutionId) {
+        const ret = await client.send(new GetPipelineExecutionCommand({pipelineName, pipelineExecutionId}))
+        const status = ret.pipelineExecution?.status
+        
+        switch (status) {
+            case PipelineExecutionStatus.Succeeded:
+                return status
+            case PipelineExecutionStatus.Failed:
+            case PipelineExecutionStatus.Cancelled:
+                return PipelineExecutionStatus.Failed
+            default:
+                return PipelineExecutionStatus.InProgress
+        }
+    }
+
     const ret = await client.send(new ListPipelineExecutionsCommand({pipelineName}))
-                    
+
     const summaries = ret.pipelineExecutionSummaries
 
     if (!summaries || summaries.length === 0) {
@@ -56,22 +87,22 @@ export const handler = async (
             case 'Create':
             case 'Update':
                 // check that the pipeline has run successfully at least once 
-                // otherwise wait for the pipeline execution
+                // otherwise wait for/start the pipeline execution
                 const client = new CodePipelineClient({ region: AWS_REGION });
 
                 try {
-                    const maxChecks = 10    // 5 minutes§
+                    const maxChecks = 10    // 5 minutes
                     let checks = 0
+                    let pipelineExecutionId: string | undefined
 
                     while (checks < maxChecks && Data === undefined) {                        
-                        const status = await waitForPipeline(client, pipelineName)
+                        const status = await checkPipelineStatus(client, pipelineName, pipelineExecutionId)
 
                         console.log(`Pipeline ${pipelineName}: ${status || 'Unknown'} after ${checks} check/s`)
 
                         switch (status) {
                             case PipelineExecutionStatus.InProgress:
-                            default:                                
-                                await sleep(30000)
+                                await sleep(30_000)
                                 break;
                             case PipelineExecutionStatus.Succeeded:
                                 Data = { PipelineStatus: status }
@@ -79,7 +110,15 @@ export const handler = async (
                             case PipelineExecutionStatus.Failed:
                                 Data = { PipelineStatus: status }
                                 break;
-                        }
+                            default:
+                                // unknown - might not have been executed
+                                // execute after 2 checks/1 minute
+                                if (checks >= 2) {
+                                    pipelineExecutionId = await executePipeline(client, pipelineName)
+                                }
+                                await sleep(30_000)
+                                break;
+                            }
 
                         ++checks                        
                     }

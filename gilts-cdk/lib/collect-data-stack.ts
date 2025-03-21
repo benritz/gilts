@@ -8,10 +8,8 @@ import * as scheduler_targets from '@aws-cdk/aws-scheduler-targets-alpha'
 
 import { Construct } from 'constructs';
 import { ContainerImages } from './container-image';
-import { WaitForPipeline } from './wait-for-pipeline';
 
 type CollectDataStackProps = cdk.StackProps & {
-  bucketName?: string
   gitRepoUrl: string
   gitRepoConnectionArn: string
 }
@@ -21,53 +19,45 @@ export class CollectDataStack extends cdk.Stack {
     super(scope, id, props);
 
     const { 
-      bucketName,
       gitRepoUrl,
       gitRepoConnectionArn
     } = props
 
-    const uniqueId = cdk.Names.uniqueId(this).toLowerCase()
-
     const bucket = new s3.Bucket(this, 'data-bucket', {
-      bucketName: bucketName ?? `gilts-data-${uniqueId}`,
       enforceSSL: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
     const artifactBucket = new s3.Bucket(this, 'artifact-bucket', {
-      bucketName: bucketName ?? `collect-data-artifact-${uniqueId}`,
       enforceSSL: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     })
 
     const cis = new ContainerImages(this, 'container-images', {
-      projectName: `collect-data-build-${uniqueId}`,
       specs: [{
-        name: `collect-data-${uniqueId}`,
-        ecrRepoGroup: 'gilts',
+        name: 'collect-data',
         gitRepoUrl,
         gitRepoDockerfilePath: 'docker/collect-data',
         gitRepoConnectionArn,
+        buildOnPush: false,
+        waitForPipeline: true,
       }],
       artifactBucket,
     })
 
-    const containerImage = cis.images.get(`collect-data-${uniqueId}`)
+    const containerImage = cis.images.get('collect-data')
     if (!containerImage) {
       throw new Error('Container image not found');
     }
 
-    const collectDataFnName = `collect-data-${uniqueId}`
     const collectDataFn = new lambda.DockerImageFunction(this, 'collect-data-fn', {
       code: lambda.DockerImageCode.fromEcr(containerImage.ecrRepo, {tagOrDigest: 'latest'}),
-      functionName: collectDataFnName,
       description: 'Collect gilts data',
       memorySize: 128,
       timeout: cdk.Duration.minutes(5),
       architecture: lambda.Architecture.ARM_64,
       logGroup: new logs.LogGroup(this, 'collect-data-log-group', {
-        logGroupName: `/aws/lambda/${collectDataFnName}`,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
         retention: logs.RetentionDays.FIVE_DAYS,
       }),
@@ -78,16 +68,13 @@ export class CollectDataStack extends cdk.Stack {
 
     bucket.grantReadWrite(collectDataFn)
 
-    const waitForPipeline = new WaitForPipeline(this, 'waitForPipeline', { containerImage })
-    collectDataFn.node.addDependency(waitForPipeline)
+    collectDataFn.node.addDependency(containerImage)
 
     const dlq = new sqs.Queue(this, 'collect-data-dlq', {
-      queueName: `collect-data-dlq-${uniqueId}`,
       retentionPeriod: cdk.Duration.days(14),
     })
 
     const queue = new sqs.Queue(this, 'collect-data-queue', {
-      queueName: `collect-data-queue-${uniqueId}`,
       retentionPeriod: cdk.Duration.days(1),
       visibilityTimeout: cdk.Duration.hours(1),
       deadLetterQueue: {
@@ -104,12 +91,13 @@ export class CollectDataStack extends cdk.Stack {
       enabled: true,
     })
 
-    new scheduler.Schedule(this, 'scheduleDaily', {
-      scheduleName: `gilts-collect-data-daily-${uniqueId}`,
+    // based on DMO data release schedule, modify as needed
+    new scheduler.Schedule(this, 'schedule', {
       description: 'Collect gilts data daily at 12:00 UTC',
       schedule: scheduler.ScheduleExpression.cron({
-          hour: '12',
-          minute: '0',
+          hour: '14',
+          minute: '30',
+          weekDay: '2-6',
       }),
       target: new scheduler_targets.SqsSendMessage(queue),
     })
