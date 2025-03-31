@@ -1,4 +1,4 @@
-import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement } from 'chart.js';
+import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement, ScatterDataPoint } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
@@ -10,9 +10,7 @@ async function readBonds() {
   return await parquetReadObjects({ file })
 }
 
-type YieldDataPoint = {
-  x: Date
-  y: number
+type YieldDataPoint = ScatterDataPoint & {
   desc: string
 }
 
@@ -26,10 +24,10 @@ function calcYieldCurve(
   bandwidth = 0.2, 
   numPoints = 100
 ): YieldDataPoint[] {
-  const sorted = [...data].sort((a, b) => a.x.getTime() - b.x.getTime());
+  const sorted = [...data].sort((a, b) => a.x - b.x);
 
-  const minX = sorted[0].x.getTime();
-  const maxX = sorted[sorted.length - 1].x.getTime();
+  const minX = sorted[0].x;
+  const maxX = sorted[sorted.length - 1].x;
   const range = maxX - minX;
   
   const a = [];
@@ -44,7 +42,7 @@ function calcYieldCurve(
     
     for (let j = 0; j < sorted.length; j++) {
       // Calculate normalized distance
-      const distance = Math.abs(x - sorted[j].x.getTime()) / range;
+      const distance = Math.abs(x - sorted[j].x) / range;
       
       // Apply tricube kernel function for weighting
       let weight = 0;
@@ -59,7 +57,7 @@ function calcYieldCurve(
     }
 
     a.push({
-      x: new Date(x),
+      x: x,
       y: weightSum > 0 ? weightedSum / weightSum : 0,
       desc: '',
     });
@@ -72,18 +70,16 @@ function displayBonds(data: Record<string, any>[]) {
   const yields: YieldDataPoint[] = data
     .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
     .map((bond) => ({
-      x: bond.MaturityDate,
+      x: bond.MaturityDate.getTime(),
       y: bond.YieldToMaturity,
       desc: bond.Desc,
     }))
 
   const labels = yields.map(({x}) => x)  
 
-  const scaleXPadding = 2
-  const scaleXMin = yields.reduce((min, data) => !min || data.x < min ? new Date(data.x.getTime()) : min, new Date(8_640_000_000_000_000))
-  scaleXMin.setFullYear(scaleXMin.getFullYear() - scaleXPadding)
-  const scaleXMax = yields.reduce((max, data) => !max || data.x > max ? new Date(data.x.getTime()) : max, new Date(0))
-  scaleXMax.setFullYear(scaleXMax.getFullYear() + scaleXPadding)
+  const scaleXPadding = 1_000 * 60 * 60 * 24 * 365.25 * 2
+  const scaleXMin = yields.reduce((min, data) => !min || data.x < min ? data.x : min, new Date(8_640_000_000_000_000).getTime()) - scaleXPadding
+  const scaleXMax = yields.reduce((max, data) => !max || data.x > max ? data.x : max, new Date(0).getTime()) + scaleXPadding
 
   const scaleYPadding = 0.25
   const scaleYMin = yields.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE) - scaleYPadding
@@ -101,7 +97,7 @@ function displayBonds(data: Record<string, any>[]) {
     Chart.register(Colors)
     Chart.register(pluginZoom)
 
-    const chart = new Chart(canvas, {
+    const chart = new Chart<"scatter"|"line", YieldDataPoint[]>(canvas, {
       type: 'scatter',
       data: {
         labels,
@@ -143,8 +139,8 @@ function displayBonds(data: Record<string, any>[]) {
             ticks: {
               autoSkip: true,
             },
-            min: scaleXMin.getTime(),
-            max: scaleXMax.getTime(),
+            min: scaleXMin,
+            max: scaleXMax,
           },
           y: {
             beginAtZero: false,
@@ -174,7 +170,7 @@ function displayBonds(data: Record<string, any>[]) {
 
                 return [
                   `${y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
-                  x.toLocaleDateString(undefined, {
+                  new Date(x).toLocaleDateString(undefined, {
                     year: 'numeric',
                     month: 'short',
                     day: 'numeric'
@@ -200,8 +196,8 @@ function displayBonds(data: Record<string, any>[]) {
             },
             limits: {
               x: {
-                min: scaleXMin.getTime(),
-                max: scaleXMax.getTime()
+                min: scaleXMin,
+                max: scaleXMax
               }
             }
           }
@@ -217,13 +213,13 @@ function displayBonds(data: Record<string, any>[]) {
     }
 
     function zoomYears(years: number) {
-      const zoomXMin = new Date(scaleXMin.getTime())
+      const zoomXMin = new Date(scaleXMin)
       zoomXMin.setFullYear(zoomXMin.getFullYear() + scaleXPadding)
       zoomXMin.setUTCMonth(0)
       zoomXMin.setUTCDate(1)
 
-      const zoomXMax = new Date(scaleXMin.getTime())
-      zoomXMax.setFullYear(scaleXMin.getFullYear() + years + scaleXPadding)
+      const zoomXMax = new Date(scaleXMin)
+      zoomXMax.setFullYear(zoomXMax.getFullYear() + years + scaleXPadding)
       zoomXMax.setUTCMonth(11)
       zoomXMax.setUTCDate(31)
 
@@ -232,7 +228,7 @@ function displayBonds(data: Record<string, any>[]) {
         max: zoomXMax.getTime()
       }, 'default')
 
-      const {minY: zoomYMin, maxY: zoomYMax} = yields.filter(({x}) => x >= zoomXMin && x <= zoomXMax)
+      const {minY: zoomYMin, maxY: zoomYMax} = yields.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
         .reduce((acc, {y}) => {
           if (y < acc.minY) {
             acc.minY = y
