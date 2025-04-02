@@ -16,7 +16,8 @@ import (
 )
 
 var (
-	ENV_BUCKET_NAME = "GILTS_DATA_BUCKET_NAME"
+	ENV_BUCKET_NAME   = "GILTS_DATA_BUCKET_NAME"
+	ENV_BUCKET_PREFIX = "GILTS_DATA_BUCKET_PREFIX"
 )
 
 func collectData() error {
@@ -25,9 +26,11 @@ func collectData() error {
 		return fmt.Errorf("%s is not set", ENV_BUCKET_NAME)
 	}
 
+	bucketPrefix := os.Getenv(ENV_BUCKET_PREFIX)
+
 	path := &collect.S3Path{
 		Bucket: bucketName,
-		Prefix: "",
+		Prefix: bucketPrefix,
 	}
 
 	ctx := context.Background()

@@ -70,6 +70,7 @@ export class CollectData extends Construct {
       }),
       environment: {
         GILTS_DATA_BUCKET_NAME: dataBucket.bucketName,
+        GILTS_DATA_BUCKET_PREFIX: '/data',
       },
     })
 
