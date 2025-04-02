@@ -11,24 +11,21 @@ import * as athena from 'aws-cdk-lib/aws-athena';
 import { Construct } from 'constructs';
 import { ContainerImages } from './container-image';
 
-type CollectDataStackProps = cdk.StackProps & {
+type CollectDataProps = {
   gitRepoUrl: string
   gitRepoConnectionArn: string
 }
 
-export class CollectDataStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: CollectDataStackProps) {
-    super(scope, id, props);
+export class CollectData extends Construct {
+  dataBucket: s3.Bucket
+
+  constructor(scope: Construct, id: string, props: CollectDataProps) {
+    super(scope, id)
 
     const { 
       gitRepoUrl,
-      gitRepoConnectionArn
+      gitRepoConnectionArn,
     } = props
-
-    const bucket = new s3.Bucket(this, 'data-bucket', {
-      enforceSSL: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    })
 
     const artifactBucket = new s3.Bucket(this, 'artifact-bucket', {
       enforceSSL: true,
@@ -53,6 +50,14 @@ export class CollectDataStack extends cdk.Stack {
       throw new Error('Container image not found');
     }
 
+    const dataBucket = new s3.Bucket(this, 'data-bucket', {
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    })
+
+    this.dataBucket = dataBucket
+
     const collectDataFn = new lambda.DockerImageFunction(this, 'collect-data-fn', {
       code: lambda.DockerImageCode.fromEcr(containerImage.ecrRepo, {tagOrDigest: 'latest'}),
       description: 'Collect gilts data',
@@ -64,11 +69,11 @@ export class CollectDataStack extends cdk.Stack {
         retention: logs.RetentionDays.FIVE_DAYS,
       }),
       environment: {
-        GILTS_DATA_BUCKET_NAME: bucket.bucketName,
+        GILTS_DATA_BUCKET_NAME: dataBucket.bucketName,
       },
     })
 
-    bucket.grantReadWrite(collectDataFn)
+    dataBucket.grantReadWrite(collectDataFn)
 
     collectDataFn.node.addDependency(containerImage)
 
@@ -137,7 +142,7 @@ export class CollectDataStack extends cdk.Stack {
         { name: 'day', type: glue.Schema.STRING }
       ],
       dataFormat: glue.DataFormat.PARQUET,
-      bucket,
+      bucket: dataBucket,
       s3Prefix: '',
       description: 'Gilts data',
       storedAsSubDirectories: true,
@@ -149,7 +154,7 @@ export class CollectDataStack extends cdk.Stack {
         'projection.day.range': '2024/01/01,NOW', 
         'projection.day.type': 'date', 
         'projection.enabled': 'true',
-        'storage.location.template': `s3://${bucket.bucketName}/\${day}`,
+        'storage.location.template': `s3://${dataBucket.bucketName}/\${day}`,
       }
     })
 

@@ -1,8 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { CollectDataStack } from './collect-data-stack';
+import { CollectData } from './collect-data';
+import { WebApp } from './web-app';
 
-export class GiltsCdkStack extends cdk.Stack {
+export class GiltsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -19,9 +20,13 @@ export class GiltsCdkStack extends cdk.Stack {
       throw new Error('GILTS_CODESTAR_CONNECTION_ARN environment variable is not set');
     }
 
-    new CollectDataStack(this, 'CollectDataStack', {
+    const collectData = new CollectData(this, 'collect-data', {
       gitRepoUrl: GILTS_GIT_REPO_URL,
       gitRepoConnectionArn: GILTS_GIT_REPO_CONNECTION_ARN,
-    });
+    })
+
+    new WebApp(this, 'web-app', {
+      dataBucket: collectData.dataBucket,
+    })
   }
 }
