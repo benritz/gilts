@@ -70,7 +70,7 @@ export class CollectData extends Construct {
       }),
       environment: {
         GILTS_DATA_BUCKET_NAME: dataBucket.bucketName,
-        GILTS_DATA_BUCKET_PREFIX: '/data',
+        GILTS_DATA_BUCKET_PREFIX: 'data',
       },
     })
 
@@ -155,7 +155,7 @@ export class CollectData extends Construct {
         'projection.day.range': '2024/01/01,NOW', 
         'projection.day.type': 'date', 
         'projection.enabled': 'true',
-        'storage.location.template': `s3://${dataBucket.bucketName}/\${day}`,
+        'storage.location.template': `s3://${dataBucket.bucketName}/data/\${day}`,
       }
     })
 
