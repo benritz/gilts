@@ -1,20 +1,101 @@
-import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement, ScatterDataPoint, Scale } from 'chart.js';
+import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement, ScatterDataPoint, Title, Tooltip } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
 import { asyncBufferFromUrl, parquetReadObjects } from 'hyparquet';
 
-async function readBonds() {
-  const url = '/test.parquet';
+type Bond = {
+  Type: string,
+  Source: string,
+  ISIN: string,
+  Desc: string,
+  FacePrice: number,
+  CleanPrice: number,
+  DirtyPrice: number,
+  Coupon: number,
+  SettlementDate: Date,
+  MaturityDate: Date,
+  YieldToMaturity: number,
+}
+
+const baseUrl = 'https://d20rayq2i90a2j.cloudfront.net/data'
+
+async function getDataUrl(ts: Date): Promise<string | undefined> {
+  const year = ts.getUTCFullYear(),
+    month = ts.getUTCMonth() + 1,
+    date = ts.getUTCDate()
+
+  const url = `${baseUrl}/${year}/${month.toString().padStart(2, '0')}/${date.toString().padStart(2, '0')}/DMO.parquet`
+  const resp = await fetch(url, { method: 'HEAD' })  
+
+  if (!resp.ok || resp.headers.get('content-length') === '0') {
+    return undefined
+  }
+
+  return url
+}
+
+type DataUrl = {
+  ts: Date,
+  url: string
+}
+
+async function getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefined> {
+  const toWeekday = (ts: Date) => {
+    const toDate = (ts: Date, dx: number) => {
+      ts.setUTCDate(ts.getUTCDate() + dx)
+    }
+
+    switch (ts.getUTCDay()) {
+      case 0: // Sunday
+        toDate(ts, -2)
+        break
+      case 6: // Saturday
+        toDate(ts, -1)
+        break
+    }
+    return ts
+  }
+
+  const nextDate = (ts?: Date) => {
+    if (!ts) {
+      ts = new Date()
+      ts.setUTCHours(0)
+      ts.setUTCMinutes(0)
+      ts.setUTCSeconds(0)
+      ts.setUTCMilliseconds(0)          
+    } else {
+      ts = new Date(ts)
+      ts.setUTCDate(ts.getUTCDate() - 1)
+    }
+    return toWeekday(ts)
+  }
+
+
+  let ts = nextDate()
+
+  while (maxChecks > 0) {
+    const url = await getDataUrl(ts)
+    if (url) {
+      return { ts, url }
+    }
+    ts = nextDate(ts)
+    maxChecks--
+  }
+
+  return undefined
+}
+
+async function readData(url: string): Promise<Bond[]> {
   const file = await asyncBufferFromUrl({ url })
-  return await parquetReadObjects({ file })
+  return await parquetReadObjects({ file }) as Bond[]
 }
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
 }
 
-type UpdateYieldDataFn = (data: YieldDataPoint[]) => void
+type UpdateYieldDataFn = (ts: Date, data: Bond[]) => void
 
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
@@ -83,6 +164,8 @@ function setupChart(): UpdateYieldDataFn {
   Chart.register(LineElement)
   Chart.register(Colors)
   Chart.register(pluginZoom)
+  Chart.register(Title)
+  Chart.register(Tooltip)
 
   const chart = new Chart<"scatter"|"line", YieldDataPoint[]>(canvas, {
     type: 'scatter',
@@ -162,6 +245,12 @@ function setupChart(): UpdateYieldDataFn {
             }
           }
         },
+        title: {
+          display: true,
+          font: {
+            size: 16
+          },
+        },        
         zoom: {
           pan: {
               enabled: true,
@@ -197,7 +286,13 @@ function setupChart(): UpdateYieldDataFn {
     scaleXPadding = 1_000 * 60 * 60 * 24 * 365.25 * yearsPadding,
     scaleYPadding = 0.25
 
-  const updateData = (data: YieldDataPoint[]) => {
+  const updateData: UpdateYieldDataFn = (ts: Date, bonds: Bond[]) => {
+    const data = bonds.map((bond) => ({
+        x: bond.MaturityDate.getTime(),
+        y: bond.YieldToMaturity,
+        desc: bond.Desc,
+      }))
+
     chart.data.labels = data.map(({x}) => x)
     chart.data.datasets[0].data = data
     chart.data.datasets[1].data = calcYieldCurve(data, 0.2, 100)
@@ -223,7 +318,16 @@ function setupChart(): UpdateYieldDataFn {
 
     const {plugins} = chart.options
     if (plugins) {
-      const {zoom} = plugins
+      const {zoom, title} = plugins
+
+      if (title) {
+        title.text = ts.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })
+      }
+
       if (zoom) {
         console.log(zoom.limits)
         const {limits} = zoom
@@ -304,15 +408,18 @@ function setupChart(): UpdateYieldDataFn {
 async function main() {
   const updateData = setupChart()
 
-  const data: YieldDataPoint[] = (await readBonds())
-    .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
-    .map((bond) => ({
-      x: bond.MaturityDate.getTime(),
-      y: bond.YieldToMaturity,
-      desc: bond.Desc,
-    }))
+  const dataUrl = await getLatestDataUrl()
+  if (!dataUrl) {
+    alert('No data found')
+    return
+  }
 
-  updateData?.(data)
+  const {ts, url} = dataUrl
+
+  const data: Bond[] = (await readData(url))
+    .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
+
+  updateData?.(ts, data)
 }
 
 main().catch(console.error)
