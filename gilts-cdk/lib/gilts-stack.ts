@@ -41,6 +41,12 @@ export class GiltsStack extends cdk.Stack {
       exportName: 'WebAppDeployRoleArn',
     }) 
 
+    new cdk.CfnOutput(this, 'export-webapp-distribution-id', {
+      value: webApp.dist.distributionId,
+      description: 'CloudFront distribution ID',
+      exportName: 'WebAppDistributionId',
+    })
+    
     new cdk.CfnOutput(this, 'export-webapp-domain-name', {
       value: webApp.dist.domainName,
       description: 'Domain name for web app',

@@ -30,24 +30,6 @@ export class WebApp extends Construct {
 
     this.webAppBucket = webAppBucket
 
-    const deployRole = new iam.Role(this, 'WebAppDeployRole', {
-      assumedBy: new iam.AccountPrincipal(cdk.Aws.ACCOUNT_ID),
-    })
-
-    webAppBucket.grantReadWrite(deployRole)
-
-    new iam.ManagedPolicy(this, 'assume-policy', {
-      statements: [
-        new iam.PolicyStatement({
-          actions: ['sts:AssumeRole'],
-          resources: [deployRole.roleArn],
-          effect: iam.Effect.ALLOW,
-        })
-      ]
-    })
-
-    this.deployRole = deployRole
-
     const accessIdentity = new cloudfront.OriginAccessIdentity(this, 'CloudfrontAccess')
 
     const webAppAccessPolicy = new iam.PolicyStatement();
@@ -100,8 +82,41 @@ export class WebApp extends Construct {
       //         ttl: cdk.Duration.minutes(5)
       //     }
       // ]
-    })
+    })    
 
     this.dist = dist
+
+    const deployRole = new iam.Role(this, 'WebAppDeployRole', {
+      assumedBy: new iam.AccountPrincipal(cdk.Aws.ACCOUNT_ID),
+    })
+
+    webAppBucket.grantReadWrite(deployRole)
+    dist.grantCreateInvalidation(deployRole)    
+
+    const stack = cdk.Stack.of(this)
+    
+    deployRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['cloudformation:DescribeStacks'],
+      resources: [
+        stack.formatArn({
+          service: 'cloudformation',
+          resource: 'stack',
+          resourceName: `${stack.stackName}/*`,
+        })
+      ],
+      effect: iam.Effect.ALLOW,
+    }))
+
+    new iam.ManagedPolicy(this, 'assume-policy', {
+      statements: [
+        new iam.PolicyStatement({
+          actions: ['sts:AssumeRole'],
+          resources: [deployRole.roleArn],
+          effect: iam.Effect.ALLOW,
+        })
+      ]
+    })
+
+    this.deployRole = deployRole
   }
 }
