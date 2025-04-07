@@ -11,7 +11,9 @@ type WebAppProps = {
 }
 
 export class WebApp extends Construct {
-  dataBucket: s3.Bucket
+  webAppBucket: s3.Bucket
+  deployRole: iam.Role
+  dist: cloudfront.Distribution
 
   constructor(scope: Construct, id: string, props: WebAppProps) {
     super(scope, id)
@@ -25,6 +27,26 @@ export class WebApp extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     })
+
+    this.webAppBucket = webAppBucket
+
+    const deployRole = new iam.Role(this, 'WebAppDeployRole', {
+      assumedBy: new iam.AccountPrincipal(cdk.Aws.ACCOUNT_ID),
+    })
+
+    webAppBucket.grantReadWrite(deployRole)
+
+    new iam.ManagedPolicy(this, 'assume-policy', {
+      statements: [
+        new iam.PolicyStatement({
+          actions: ['sts:AssumeRole'],
+          resources: [deployRole.roleArn],
+          effect: iam.Effect.ALLOW,
+        })
+      ]
+    })
+
+    this.deployRole = deployRole
 
     const accessIdentity = new cloudfront.OriginAccessIdentity(this, 'CloudfrontAccess')
 
@@ -47,13 +69,14 @@ export class WebApp extends Construct {
       defaultBehavior: {
           origin: webAppOrigin,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
       additionalBehaviors: {
         'data/*': {
           origin: dataOrigin,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT_AND_SECURITY_HEADERS,
         }
       },
       // domainNames: [domainName],
@@ -78,5 +101,7 @@ export class WebApp extends Construct {
       //     }
       // ]
     })
+
+    this.dist = dist
   }
 }

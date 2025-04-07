@@ -25,8 +25,26 @@ export class GiltsStack extends cdk.Stack {
       gitRepoConnectionArn: GILTS_GIT_REPO_CONNECTION_ARN,
     })
 
-    new WebApp(this, 'web-app', {
+    const webApp = new WebApp(this, 'web-app', {
       dataBucket: collectData.dataBucket,
     })
+
+    new cdk.CfnOutput(this, 'export-webapp-bucket-name', {
+      value: webApp.webAppBucket.bucketName,
+      description: 'Bucket name for the web app',
+      exportName: 'WebAppBucketName',
+    }) 
+
+    new cdk.CfnOutput(this, 'export-webapp-deploy-role-arn', {
+      value: webApp.deployRole.roleArn,
+      description: 'Role for deploying the web app',
+      exportName: 'WebAppDeployRoleArn',
+    }) 
+
+    new cdk.CfnOutput(this, 'export-webapp-domain-name', {
+      value: webApp.dist.domainName,
+      description: 'Domain name for web app',
+      exportName: 'WebAppDomainName',
+    }) 
   }
 }
