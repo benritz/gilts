@@ -18,7 +18,7 @@ type Bond = {
   YieldToMaturity: number,
 }
 
-const baseUrl = 'https://d20rayq2i90a2j.cloudfront.net/data'
+const baseUrl = `${import.meta.env.VITE_BASE_URL ?? ''}/data`
 
 async function getDataUrl(ts: Date): Promise<string | undefined> {
   const year = ts.getUTCFullYear(),

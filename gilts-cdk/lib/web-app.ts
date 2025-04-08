@@ -91,7 +91,8 @@ export class WebApp extends Construct {
     })
 
     webAppBucket.grantReadWrite(deployRole)
-    dist.grantCreateInvalidation(deployRole)    
+    dist.grantCreateInvalidation(deployRole)
+    dist.grant(deployRole, 'cloudfront:GetInvalidation')
 
     const stack = cdk.Stack.of(this)
     
