@@ -26,6 +26,11 @@ func NewDMOCollector() *DMOCollector {
 }
 
 func (c *DMOCollector) Collect(ctx context.Context, date time.Time) (*CollectedBonds, error) {
+	// The DMO website has a number of reports that can be used to collect gilt data.
+	// https://www.dmo.gov.uk/data/pdfdatareport?reportCode=D1A
+	// https://www.dmo.gov.uk/data/pdfdatareport?reportCode=D9D
+	// https://www.dmo.gov.uk/data/pdfdatareport?reportCode=D10B
+
 	params := fmt.Sprintf("&Trade Date=%02d-%02d-%04d", date.Day(), date.Month(), date.Year())
 	url := "https://www.dmo.gov.uk/umbraco/surface/DataExport/GetDataExport?reportCode=D10B&exportFormatValue=xls&parameters=" + url.QueryEscape(params)
 

@@ -395,7 +395,21 @@ func CompleteBond(b *Bond) error {
 	b.AccruedDays = int(math.Floor(b.SettlementDate.Sub(b.PrevCouponDate).Hours() / 24))
 	b.CouponPeriodDays = int(math.Floor(b.NextCouponDate.Sub(b.PrevCouponDate).Hours() / 24))
 
+	accruedAmount := float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
+
+	if b.CleanPrice > 0 && b.DirtyPrice > 0 {
+		// validate dirty price using accrued amount
+		// trust the clean price and recalculate dirty price if the difference is >= 2.5 bps
+		dp := b.CleanPrice + accruedAmount - b.DirtyPrice
+
+		if math.Abs(dp) >= 0.025 {
+			b.DirtyPrice = b.CleanPrice + accruedAmount
+		}
+	}
+
 	// TODO need to account for different day-count conventions 360/30 vs Actual/Actual
+	// Fine for UK gilts, US treasuries
+	// Bad for euro bonds which use 30/360
 	b.CouponPeriods = (int(b.MaturityYears) * 2) + int(math.Ceil(float64(b.MaturityDays)/365.0*2))
 
 	if b.YieldToMaturity == 0 {
@@ -457,8 +471,6 @@ func CompleteBond(b *Bond) error {
 			b.CouponPeriodDays,
 		)
 	}
-
-	accruedAmount := float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
 
 	if b.CleanPrice == 0 {
 		b.CleanPrice = b.DirtyPrice - accruedAmount
