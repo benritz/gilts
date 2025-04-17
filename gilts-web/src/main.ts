@@ -280,11 +280,35 @@ function setupChart(): UpdateYieldDataFn {
         }
       }
     }
-  })
+  })  
+    
+  const yearDiff = (a: Date, b: Date): number => {
+    const monthDiff = b.getMonth() - a.getMonth(),
+      dayDiff = b.getDate() - a.getDate()
+  
+    let years = b.getFullYear() - a.getFullYear()
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+      years--;
+    }
+  
+    return years;
+  }
 
-  const yearsPadding = 2,
-    scaleXPadding = 1_000 * 60 * 60 * 24 * 365.25 * yearsPadding,
-    scaleYPadding = 0.25
+  const padYearRange = (min: Date, max: Date, years: number) => {
+    const monthsPadding = 1/25 * years * 12
+
+    min.setUTCMonth(min.getUTCMonth() - monthsPadding)
+    max.setUTCMonth(max.getUTCMonth() + monthsPadding)
+  }
+
+  const padYieldRange = (min: number, max: number) => {
+    const scaleYPadding = 0.25
+
+    return [
+      min - scaleYPadding,
+      max + scaleYPadding
+    ]
+  }
 
   const updateData: UpdateYieldDataFn = (ts: Date, bonds: Bond[]) => {
     const data = bonds.map((bond) => ({
@@ -297,22 +321,30 @@ function setupChart(): UpdateYieldDataFn {
     chart.data.datasets[0].data = data
     chart.data.datasets[1].data = calcYieldCurve(data, 0.2, 100)
 
-    const scaleXMin = data.reduce((min, data) => !min || data.x < min ? data.x : min, new Date(8_640_000_000_000_000).getTime()) - scaleXPadding
-    const scaleXMax = data.reduce((max, data) => !max || data.x > max ? data.x : max, new Date(0).getTime()) + scaleXPadding
+    const minX = data.reduce((min, data) => !min || data.x < min ? data.x : min, new Date(8_640_000_000_000_000).getTime())
+    const maxX = data.reduce((max, data) => !max || data.x > max ? data.x : max, new Date(0).getTime())
 
-    const scaleYMin = data.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE) - scaleYPadding
-    const scaleYMax = data.reduce((max, data) => !max || data.y > max ? data.y : max, 0) + scaleYPadding
+    const scaleMinX = new Date(minX),
+      scaleMaxX = new Date(maxX),
+      years = yearDiff(scaleMinX, scaleMaxX)
+
+    padYearRange(scaleMinX, scaleMaxX, years)
+
+    const minY = data.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE)
+    const maxY = data.reduce((max, data) => !max || data.y > max ? data.y : max, 0)
+
+    const [scaleMinY, scaleMaxY] = padYieldRange(minY, maxY)
 
     const {scales} = chart.options
     if (scales) {
       const {x,y} = scales
       if (x) {
-        x.min = scaleXMin
-        x.max = scaleXMax
+        x.min = scaleMinX.getTime()
+        x.max = scaleMaxX.getTime()
       }
       if (y) {
-        y.min = scaleYMin
-        y.max = scaleYMax
+        y.min = scaleMinY
+        y.max = scaleMaxY
       }
     }
 
@@ -329,17 +361,16 @@ function setupChart(): UpdateYieldDataFn {
       }
 
       if (zoom) {
-        console.log(zoom.limits)
         const {limits} = zoom
         if (limits) {
           const {x,y} = limits
           if (x) {
-            x.min = scaleXMin
-            x.max = scaleXMax
+            x.min = scaleMinX.getTime()
+            x.max = scaleMaxX.getTime()
           }
           if (y) {
-            y.min = scaleYMin
-            y.max = scaleYMax
+            y.min = scaleMinY
+            y.max = scaleMaxY
           }
         }
       }
@@ -355,40 +386,41 @@ function setupChart(): UpdateYieldDataFn {
     })
   }
 
-  function zoomYears(years: number) {
-    const xMin = Number(chart.options.scales?.x?.min)
-    const zoomXMin = new Date(xMin)
-    zoomXMin.setFullYear(zoomXMin.getFullYear() + yearsPadding)
-    zoomXMin.setUTCMonth(0)
-    zoomXMin.setUTCDate(1)
+  function zoomYears(years: number, restrictYieldRange: boolean = false) {
+    const {data} = chart.data.datasets[0]
 
+    const xMin = data.map(({x}) => x)
+      .reduce((min, x) => !min || x < min ? x : min, new Date(8_640_000_000_000_000).getTime())
+
+    const zoomXMin = new Date(xMin)
     const zoomXMax = new Date(xMin)
-    zoomXMax.setFullYear(zoomXMax.getFullYear() + years + yearsPadding)
-    zoomXMax.setUTCMonth(11)
-    zoomXMax.setUTCDate(31)
+    zoomXMax.setFullYear(zoomXMax.getFullYear() + years)
+    padYearRange(zoomXMin, zoomXMax, years)
 
     chart.zoomScale('x', {
       min: zoomXMin.getTime(),
       max: zoomXMax.getTime()
     }, 'default')
 
-    const {minY: zoomYMin, maxY: zoomYMax} = chart.data.datasets[0].data.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
-      .reduce((acc, {y}) => {
-        if (y < acc.minY) {
-          acc.minY = y
-        }
-        if (y > acc.maxY) {
-          acc.maxY = y
-        }
-        return acc
-      }, {minY: Number.MAX_VALUE, maxY: 0})
+    if (restrictYieldRange) {
+      const {minY, maxY} = data.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
+        .reduce((acc, {y}) => {
+          if (y < acc.minY) {
+            acc.minY = y
+          }
+          if (y > acc.maxY) {
+            acc.maxY = y
+          }
+          return acc
+        }, {minY: Number.MAX_VALUE, maxY: 0})
 
-    const zoomYPadding = 0.25
+      const [zoomMinY, zoomMaxY] = padYieldRange(minY, maxY)
 
-    chart.zoomScale('y', {
-      min: zoomYMin - zoomYPadding,
-      max: zoomYMax + zoomYPadding
-    }, 'default')
+      chart.zoomScale('y', {
+        min: zoomMinY,
+        max: zoomMaxY
+      }, 'default')
+    }
   }
 
   [5, 10, 20].forEach((years: number) => {
