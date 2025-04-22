@@ -20,27 +20,80 @@ type Bond = {
 
 const baseUrl = `${import.meta.env.VITE_BASE_URL ?? ''}/data`
 
-async function getDataUrl(ts: Date): Promise<string | undefined> {
+type DataUrl = {
+  ts: Date,
+  url: string
+}
+
+function getUrlForTs(ts: Date): string {
   const year = ts.getUTCFullYear(),
     month = ts.getUTCMonth() + 1,
     date = ts.getUTCDate()
 
-  const url = `${baseUrl}/${year}/${month.toString().padStart(2, '0')}/${date.toString().padStart(2, '0')}/DMO.parquet`
+  return `${baseUrl}/${year}/${month.toString().padStart(2, '0')}/${date.toString().padStart(2, '0')}/DMO.parquet`
+}
+
+let dataUrlCache: Set<number>|undefined = undefined
+
+const dataUrlCacheKey = 'dataUrlCache'
+
+function getDataUrlCache() {
+  if (!dataUrlCache) {
+    let data: number[] = []
+
+    const v = localStorage.getItem(dataUrlCacheKey)
+    if (v) {
+      try {
+        data = JSON.parse(v)
+      } catch (e) {
+        console.error('Failed to parse dataUrlCache', e)
+      }
+    }
+
+    dataUrlCache = new Set<number>(data)
+  }
+
+  return dataUrlCache
+}
+
+function storeDataUrlCache() {
+  if (dataUrlCache) {
+    localStorage.setItem(dataUrlCacheKey, JSON.stringify(Array.from(dataUrlCache)))
+  } else {
+    localStorage.removeItem(dataUrlCacheKey)
+  }
+}
+
+function cacheDataUrl(ts: Date) {
+  const cache = getDataUrlCache()
+  cache.add(ts.getTime())
+  storeDataUrlCache()
+}
+
+function isDataUrlCached(ts: Date): boolean {
+  const cache = getDataUrlCache()
+  return cache.has(ts.getTime())
+}
+
+async function getDataUrl(ts: Date): Promise<DataUrl | undefined> {
+  const url = getUrlForTs(ts)
+
+  if (isDataUrlCached(ts)) {
+    return {ts, url}
+  }
+
   const resp = await fetch(url, { method: 'HEAD' })  
 
   if (!resp.ok || resp.headers.get('content-length') === '0') {
     return undefined
   }
 
-  return url
+  cacheDataUrl(ts)
+
+  return {ts, url}
 }
 
-type DataUrl = {
-  ts: Date,
-  url: string
-}
-
-async function getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefined> {
+async function getDataUrls(maxUrls: number, maxChecks: number = 30, ts?: Date): Promise<DataUrl[]> {
   const toWeekday = (ts: Date) => {
     const toDate = (ts: Date, dx: number) => {
       ts.setUTCDate(ts.getUTCDate() + dx)
@@ -71,19 +124,29 @@ async function getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefi
     return toWeekday(ts)
   }
 
+  const urls: DataUrl[] = []
 
-  let ts = nextDate()
+  ts = nextDate(ts)
 
   while (maxChecks > 0) {
     const url = await getDataUrl(ts)
     if (url) {
-      return { ts, url }
+      urls.push(url)
+      if (urls.length >= maxUrls) {
+        break
+      }
     }
     ts = nextDate(ts)
     maxChecks--
   }
 
-  return undefined
+  return urls
+}
+
+async function getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefined> {
+  const urls = await getDataUrls(1, maxChecks)
+
+  return urls[0]
 }
 
 async function readData(url: string): Promise<Bond[]> {
