@@ -12,14 +12,23 @@
 
       <canvas id="chart" width="1600" height="800"></canvas>
 
-      <div class="flex flex-col m-4 w-max">
-        <h2>Maturity</h2>
-        <div id="actions" class="flex justify-center gap-2 mt-4">
-          <button id="zoom-5" class="btn">5 years</button>
-          <button id="zoom-10" class="btn">10 years</button>
-          <button id="zoom-20" class="btn">20 years</button>
-          <button id="zoom-reset" class="btn">Any Maturity</button>
+      <div id="controls" class="flex">
+        <div id="maturity" class="flex flex-col m-4 w-max">
+          <h2>Maturity</h2>
+          <div class="flex justify-center gap-2 mt-4">
+            <button id="zoom-5" class="btn">5 years</button>
+            <button id="zoom-10" class="btn">10 years</button>
+            <button id="zoom-20" class="btn">20 years</button>
+            <button id="zoom-reset" class="btn">Any Maturity</button>
+          </div>
         </div>
+  
+        <div id="settlement-date" class="flex flex-col m-4 w-max">
+          <h2>Settlement Date</h2>
+          <div class="flex justify-center gap-2 mt-4">
+            <select id="settlement-date-select"></select>
+          </div>
+        </div>  
       </div>
 
     </main>

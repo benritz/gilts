@@ -2,157 +2,7 @@ import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineControlle
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
-import { asyncBufferFromUrl, parquetReadObjects } from 'hyparquet';
-
-type Bond = {
-  Type: string,
-  Source: string,
-  ISIN: string,
-  Desc: string,
-  FacePrice: number,
-  CleanPrice: number,
-  DirtyPrice: number,
-  Coupon: number,
-  SettlementDate: Date,
-  MaturityDate: Date,
-  YieldToMaturity: number,
-}
-
-const baseUrl = `${import.meta.env.VITE_BASE_URL ?? ''}/data`
-
-type DataUrl = {
-  ts: Date,
-  url: string
-}
-
-function getUrlForTs(ts: Date): string {
-  const year = ts.getUTCFullYear(),
-    month = ts.getUTCMonth() + 1,
-    date = ts.getUTCDate()
-
-  return `${baseUrl}/${year}/${month.toString().padStart(2, '0')}/${date.toString().padStart(2, '0')}/DMO.parquet`
-}
-
-let dataUrlCache: Set<number>|undefined = undefined
-
-const dataUrlCacheKey = 'dataUrlCache'
-
-function getDataUrlCache() {
-  if (!dataUrlCache) {
-    let data: number[] = []
-
-    const v = localStorage.getItem(dataUrlCacheKey)
-    if (v) {
-      try {
-        data = JSON.parse(v)
-      } catch (e) {
-        console.error('Failed to parse dataUrlCache', e)
-      }
-    }
-
-    dataUrlCache = new Set<number>(data)
-  }
-
-  return dataUrlCache
-}
-
-function storeDataUrlCache() {
-  if (dataUrlCache) {
-    localStorage.setItem(dataUrlCacheKey, JSON.stringify(Array.from(dataUrlCache)))
-  } else {
-    localStorage.removeItem(dataUrlCacheKey)
-  }
-}
-
-function cacheDataUrl(ts: Date) {
-  const cache = getDataUrlCache()
-  cache.add(ts.getTime())
-  storeDataUrlCache()
-}
-
-function isDataUrlCached(ts: Date): boolean {
-  const cache = getDataUrlCache()
-  return cache.has(ts.getTime())
-}
-
-async function getDataUrl(ts: Date): Promise<DataUrl | undefined> {
-  const url = getUrlForTs(ts)
-
-  if (isDataUrlCached(ts)) {
-    return {ts, url}
-  }
-
-  const resp = await fetch(url, { method: 'HEAD' })  
-
-  if (!resp.ok || resp.headers.get('content-length') === '0') {
-    return undefined
-  }
-
-  cacheDataUrl(ts)
-
-  return {ts, url}
-}
-
-async function getDataUrls(maxUrls: number, maxChecks: number = 30, ts?: Date): Promise<DataUrl[]> {
-  const toWeekday = (ts: Date) => {
-    const toDate = (ts: Date, dx: number) => {
-      ts.setUTCDate(ts.getUTCDate() + dx)
-    }
-
-    switch (ts.getUTCDay()) {
-      case 0: // Sunday
-        toDate(ts, -2)
-        break
-      case 6: // Saturday
-        toDate(ts, -1)
-        break
-    }
-    return ts
-  }
-
-  const nextDate = (ts?: Date) => {
-    if (!ts) {
-      ts = new Date()
-      ts.setUTCHours(0)
-      ts.setUTCMinutes(0)
-      ts.setUTCSeconds(0)
-      ts.setUTCMilliseconds(0)          
-    } else {
-      ts = new Date(ts)
-      ts.setUTCDate(ts.getUTCDate() - 1)
-    }
-    return toWeekday(ts)
-  }
-
-  const urls: DataUrl[] = []
-
-  ts = nextDate(ts)
-
-  while (maxChecks > 0) {
-    const url = await getDataUrl(ts)
-    if (url) {
-      urls.push(url)
-      if (urls.length >= maxUrls) {
-        break
-      }
-    }
-    ts = nextDate(ts)
-    maxChecks--
-  }
-
-  return urls
-}
-
-async function getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefined> {
-  const urls = await getDataUrls(1, maxChecks)
-
-  return urls[0]
-}
-
-async function readData(url: string): Promise<Bond[]> {
-  const file = await asyncBufferFromUrl({ url })
-  return await parquetReadObjects({ file }) as Bond[]
-}
+import { Bond, DataSource, DataUrl } from './datasource';
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
@@ -503,7 +353,10 @@ function setupChart(): UpdateYieldDataFn {
 async function main() {
   const updateData = setupChart()
 
-  const dataUrl = await getLatestDataUrl()
+  const ds = new DataSource('DMO')
+
+  const dataUrl = await ds.getLatestDataUrl()
+
   if (!dataUrl) {
     alert('No data found')
     return
@@ -511,10 +364,37 @@ async function main() {
 
   const {ts, url} = dataUrl
 
-  const data: Bond[] = (await readData(url))
+  const data: Bond[] = (await ds.getData(url))
     .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
 
   updateData?.(ts, data)
+
+  const select = document.getElementById('settlement-date-select')
+  if (select instanceof HTMLSelectElement) {
+    const dataUrls = await ds.getDataUrls(180)
+    dataUrls.forEach(({ts}: DataUrl, n: number) => {
+      const option = document.createElement('option')
+      option.value = n.toString()
+      option.textContent = ts.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+      select.appendChild(option)
+    })
+    select.addEventListener('change', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const n = Number((e.target as HTMLSelectElement).value)
+      const {ts, url} = dataUrls[n]
+
+      const data: Bond[] = (await ds.getData(url))
+        .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
+
+      updateData?.(ts, data)
+    })
+  }
 }
 
 main().catch(console.error)
