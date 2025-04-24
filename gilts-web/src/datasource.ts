@@ -31,7 +31,6 @@ function isToday(ts: Date): boolean {
 
 export class DataSource {
     private type: string
-    private hitCache: Cache
     private missCache: Cache
 
     private getUrlForTs(ts: Date): string {
@@ -45,9 +44,6 @@ export class DataSource {
     private async getDataUrl(ts: Date): Promise<DataUrl | undefined> {
         const url = this.getUrlForTs(ts)
       
-        if (this.hitCache.has(ts)) {
-          return {ts, url}
-        }
         if (this.missCache.has(ts)) {
             return undefined
         }
@@ -61,14 +57,11 @@ export class DataSource {
             return undefined
         }
   
-        this.hitCache.add(ts)
-      
         return {ts, url}
     }
     
     constructor(type: string) {
         this.type = type
-        this.hitCache = new Cache(`${type}-hit`)
         this.missCache = new Cache(`${type}-miss`)
     }
 
