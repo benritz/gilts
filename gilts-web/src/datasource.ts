@@ -97,7 +97,6 @@ export class DataSource {
           // no bond data on weekends
           // do not count as a check
           if (isWeekend(ts)) {
-            this.missCache.add(ts)
             continue
           }
 

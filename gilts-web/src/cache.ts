@@ -21,10 +21,40 @@ export class DateRangeCache {
             return ranges
         }
 
+        const addDays = (date: Date, days: number): Date => {
+            const v = new Date(date)
+            v.setUTCDate(v.getUTCDate() + days)
+            return v
+        }
+
+        // extend ranges to include weekends before merging
+        const extendedRanges = ranges.map(range => {
+            let { start, end } = range
+
+            const extendStart = start.getUTCDay() === 1,
+                extendEnd = end.getUTCDay() === 5
+
+            if (!(extendStart || extendEnd)) {
+                return range
+            }
+
+            // Monday extends to Saturday
+            if (extendStart) {
+                start = addDays(start, -2);
+            }
+
+            // Friday extends to Sunday
+            if (extendEnd) {
+                end = addDays(end, 2);
+            }
+
+            return { start, end };
+        });
+
         const merged: DateRange[] = []
         let curr: DateRange | undefined
 
-        for (const range of ranges) {
+        for (const range of extendedRanges) {
             if (!curr) {
                 curr = { ...range }
                 continue
@@ -33,12 +63,6 @@ export class DateRangeCache {
             // check if the current range overlaps or is adjacent to the merged range
 
             // adjacency check with a 1-day buffer
-            const addDays = (date: Date, days: number): Date => {
-                const v = new Date(date)
-                v.setUTCDate(v.getUTCDate() + days)
-                return v
-            }
-
             const dayAfterEndDate = addDays(curr.end, 1)
 
             if (range.start.getTime() <= dayAfterEndDate.getTime()) {
