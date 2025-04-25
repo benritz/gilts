@@ -1,5 +1,5 @@
 import { asyncBufferFromUrl, parquetReadObjects } from 'hyparquet'
-import { Cache } from './cache'
+import { DateRangeCache } from './cache'
 
 export type Bond = {
     Type: string,
@@ -31,7 +31,7 @@ function isToday(ts: Date): boolean {
 
 export class DataSource {
     private type: string
-    private missCache: Cache
+    private missCache: DateRangeCache
 
     private getUrlForTs(ts: Date): string {
         const year = ts.getUTCFullYear(),
@@ -62,7 +62,7 @@ export class DataSource {
     
     constructor(type: string) {
         this.type = type
-        this.missCache = new Cache(`${type}-miss`)
+        this.missCache = new DateRangeCache(`${type}-miss`)
     }
 
     async getDataUrls(maxUrls: number, maxChecks?: number, ts?: Date): Promise<DataUrl[]> {
@@ -70,41 +70,37 @@ export class DataSource {
           maxChecks = Math.max(30, maxUrls * 2)
         }
 
-        const toWeekday = (ts: Date) => {
-          const toDate = (ts: Date, dx: number) => {
-            ts.setUTCDate(ts.getUTCDate() + dx)
-          }
-      
+        const isWeekend = (ts: Date) => {
           switch (ts.getUTCDay()) {
             case 0: // Sunday
-              toDate(ts, -2)
-              break
             case 6: // Saturday
-              toDate(ts, -1)
-              break
+              return true
           }
-          return ts
+          return false
         }
-      
+
         const nextDate = (ts?: Date) => {
           if (!ts) {
             ts = new Date()
-            ts.setUTCHours(0)
-            ts.setUTCMinutes(0)
-            ts.setUTCSeconds(0)
-            ts.setUTCMilliseconds(0)          
+            ts.setUTCHours(0, 0, 0, 0)
           } else {
             ts = new Date(ts)
             ts.setUTCDate(ts.getUTCDate() - 1)
           }
-          return toWeekday(ts)
+          return ts
         }
-      
+
         const urls: DataUrl[] = []
       
-        ts = nextDate(ts)
-      
         while (maxChecks > 0) {
+          ts = nextDate(ts)
+          // no bond data on weekends
+          // do not count as a check
+          if (isWeekend(ts)) {
+            this.missCache.add(ts)
+            continue
+          }
+
           const url = await this.getDataUrl(ts)
           if (url) {
             urls.push(url)
@@ -112,7 +108,7 @@ export class DataSource {
               break
             }
           }
-          ts = nextDate(ts)
+
           maxChecks--
         }
       
