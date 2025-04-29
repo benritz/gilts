@@ -223,6 +223,56 @@ function setupChart(): UpdateYieldDataFn {
     ]
   }
 
+  let zoomYears: number | undefined
+
+  function zoomToYears(years?: number, restrictYieldRange: boolean = false) {
+    const {data} = chart.data.datasets[0],
+      x = data.map(({x}) => x)
+
+    const xMin = x.reduce((min, x) => !min || x < min ? x : min, new Date(8_640_000_000_000_000).getTime())
+    const zoomXMin = new Date(xMin)
+
+    let zoomXMax
+
+    if (years) {
+      zoomXMax = new Date(xMin)
+      zoomXMax.setFullYear(zoomXMax.getFullYear() + years)
+      padYearRange(zoomXMin, zoomXMax, years)
+    } else {
+      const xMax = x.reduce((max, x) => !max || x > max ? x : max, new Date(0).getTime())
+      zoomXMax = new Date(xMax)
+      const diff = yearDiff(zoomXMin, zoomXMax)
+      padYearRange(zoomXMin, zoomXMax, diff)
+    }
+
+    chart.zoomScale('x', {
+      min: zoomXMin.getTime(),
+      max: zoomXMax.getTime()
+    }, 'default')
+
+    if (restrictYieldRange) {
+      const {minY, maxY} = data.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
+        .reduce((acc, {y}) => {
+          if (y < acc.minY) {
+            acc.minY = y
+          }
+          if (y > acc.maxY) {
+            acc.maxY = y
+          }
+          return acc
+        }, {minY: Number.MAX_VALUE, maxY: 0})
+
+      const [zoomMinY, zoomMaxY] = padYieldRange(minY, maxY)
+
+      chart.zoomScale('y', {
+        min: zoomMinY,
+        max: zoomMaxY
+      }, 'default')
+    }
+
+    zoomYears = years
+  }
+
   const updateData: UpdateYieldDataFn = (ts: Date, bonds: Bond[]) => {
     const data = bonds.map((bond) => ({
         x: bond.MaturityDate.getTime(),
@@ -287,6 +337,8 @@ function setupChart(): UpdateYieldDataFn {
           }
         }
       }
+
+      zoomToYears(zoomYears, true)
     }
 
     chart.update()
@@ -295,45 +347,8 @@ function setupChart(): UpdateYieldDataFn {
   const zoomResetBtn = document.getElementById('zoom-reset');
   if (zoomResetBtn instanceof HTMLButtonElement) {
     zoomResetBtn.addEventListener('click', () => {
-      chart.resetZoom()
+      zoomToYears(undefined, true)
     })
-  }
-
-  function zoomYears(years: number, restrictYieldRange: boolean = false) {
-    const {data} = chart.data.datasets[0]
-
-    const xMin = data.map(({x}) => x)
-      .reduce((min, x) => !min || x < min ? x : min, new Date(8_640_000_000_000_000).getTime())
-
-    const zoomXMin = new Date(xMin)
-    const zoomXMax = new Date(xMin)
-    zoomXMax.setFullYear(zoomXMax.getFullYear() + years)
-    padYearRange(zoomXMin, zoomXMax, years)
-
-    chart.zoomScale('x', {
-      min: zoomXMin.getTime(),
-      max: zoomXMax.getTime()
-    }, 'default')
-
-    if (restrictYieldRange) {
-      const {minY, maxY} = data.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
-        .reduce((acc, {y}) => {
-          if (y < acc.minY) {
-            acc.minY = y
-          }
-          if (y > acc.maxY) {
-            acc.maxY = y
-          }
-          return acc
-        }, {minY: Number.MAX_VALUE, maxY: 0})
-
-      const [zoomMinY, zoomMaxY] = padYieldRange(minY, maxY)
-
-      chart.zoomScale('y', {
-        min: zoomMinY,
-        max: zoomMaxY
-      }, 'default')
-    }
   }
 
   [5, 10, 20].forEach((years: number) => {
@@ -342,7 +357,7 @@ function setupChart(): UpdateYieldDataFn {
       btn.addEventListener('click', (e) => {
         e.preventDefault()
         e.stopPropagation()
-        zoomYears(years)
+        zoomToYears(years)
       })
     }
   })
