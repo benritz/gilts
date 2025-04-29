@@ -50,6 +50,16 @@
             "url": "https://tailwindcss.com/docs/functions-and-directives#variants"
           }
         ]
+      },
+      {
+        "name": "@plugin",
+        "description": "Use the @plugin directive to load a legacy JavaScript-based plugin",
+        "references": [
+          {
+            "name": "Tailwind Documentation",
+            "url": "https://tailwindcss.com/docs/functions-and-directives#plugin"
+          }
+        ]
       }
     ]
   }
