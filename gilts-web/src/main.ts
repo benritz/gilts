@@ -344,21 +344,18 @@ function setupChart(): UpdateYieldDataFn {
     chart.update()
   }
 
-  const zoomResetBtn = document.getElementById('zoom-reset');
-  if (zoomResetBtn instanceof HTMLButtonElement) {
-    zoomResetBtn.addEventListener('click', () => {
-      zoomToYears(undefined, true)
-    })
-  }
+  const maturityGroup = document.getElementById('maturity');
 
-  [5, 10, 20].forEach((years: number) => {
-    const btn = document.getElementById(`zoom-${years}`);
-    if (btn instanceof HTMLButtonElement) {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        zoomToYears(years)
-      })
+  maturityGroup?.addEventListener('change', (event) => {
+    const {target} = event
+
+    if (target instanceof HTMLInputElement && target.name === 'maturity_options') {
+      const {value} = target
+      let zoomYears: number | undefined
+      if (value !== 'max') {
+        zoomYears = Number(value)
+      }
+      zoomToYears(zoomYears)
     }
   })
 
