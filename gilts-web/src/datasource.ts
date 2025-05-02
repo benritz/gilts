@@ -22,11 +22,32 @@ export type DataUrl = {
     url: string
 }
 
+export type Data = {
+  ts: Date,
+  data: Bond[]
+}
+
 function isToday(ts: Date): boolean {
-    const today = new Date()
-    return ts.getUTCFullYear() === today.getUTCFullYear() &&
-        ts.getUTCMonth() === today.getUTCMonth() &&
-        ts.getUTCDate() === today.getUTCDate()
+  const today = new Date()
+  return ts.getUTCFullYear() === today.getUTCFullYear() &&
+    ts.getUTCMonth() === today.getUTCMonth() &&
+    ts.getUTCDate() === today.getUTCDate()
+}
+
+function isAfterToday(ts: Date): boolean {
+  const tomorrow = new Date()
+  tomorrow.setUTCHours(0, 0, 0, 0)
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  return ts.getTime() >= tomorrow.getTime()
+}
+
+function isWeekend(ts: Date): boolean {
+  switch (ts.getUTCDay()) {
+    case 0: // Sunday
+    case 6: // Saturday
+      return true
+  }
+  return false
 }
 
 export class DataSource {
@@ -41,7 +62,20 @@ export class DataSource {
         return `${baseUrl}/${year}/${month.toString().padStart(2, '0')}/${date.toString().padStart(2, '0')}/${this.type}.parquet`
     }
 
-    private async getDataUrl(ts: Date): Promise<DataUrl | undefined> {
+    constructor(type: string) {
+        this.type = type
+        this.missCache = new DateRangeCache(`${type}-miss`)
+    }
+
+    hasData(ts: Date): boolean {
+      return !(this.missCache.has(ts) || isWeekend(ts) || isAfterToday(ts))
+    }
+
+    async getDataUrl(ts: Date): Promise<DataUrl | undefined> {
+        if (isAfterToday(ts)) {
+            return undefined
+        }
+
         const url = this.getUrlForTs(ts)
       
         if (this.missCache.has(ts)) {
@@ -58,12 +92,7 @@ export class DataSource {
         }
   
         return {ts, url}
-    }
-    
-    constructor(type: string) {
-        this.type = type
-        this.missCache = new DateRangeCache(`${type}-miss`)
-    }
+    }    
 
     async getDataUrls(maxUrls: number, maxChecks?: number, ts?: Date): Promise<DataUrl[]> {
         if (!maxChecks) {
@@ -115,13 +144,18 @@ export class DataSource {
     }
 
     async getLatestDataUrl(maxChecks:number = 30): Promise<DataUrl | undefined> {
-        const urls = await this.getDataUrls(1, maxChecks)
-        return urls[0]
+      const urls = await this.getDataUrls(1, maxChecks)
+      return urls[0]
     }
 
-    async getData(url: string): Promise<Bond[]> {
-        const file = await asyncBufferFromUrl({ url })
-        return await parquetReadObjects({ file }) as Bond[]
+    async getData(dataUrl: DataUrl): Promise<Data> {
+      const { ts, url } = dataUrl,
+        file = await asyncBufferFromUrl({ url })
+
+      const data = (await parquetReadObjects({ file }) as Bond[])
+        .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))  
+
+      return { ts, data }
     }
 }
   

@@ -2,13 +2,15 @@ import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineControlle
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
-import { Bond, DataSource, DataUrl } from './datasource';
+import { DataSource, DataUrl, Data } from './datasource';
+import "cally"
+import {CalendarDate} from "cally"
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
 }
 
-type UpdateYieldDataFn = (ts: Date, data: Bond[]) => void
+type UpdateYieldDataFn = (data: Data) => void
 
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
@@ -273,7 +275,7 @@ function setupChart(): UpdateYieldDataFn {
     zoomYears = years
   }
 
-  const updateData: UpdateYieldDataFn = (ts: Date, bonds: Bond[]) => {
+  const updateData: UpdateYieldDataFn = ({ts, data: bonds}: Data) => {
     const data = bonds.map((bond) => ({
         x: bond.MaturityDate.getTime(),
         y: bond.YieldToMaturity,
@@ -367,19 +369,45 @@ async function main() {
 
   const ds = new DataSource('DMO')
 
-  const dataUrl = await ds.getLatestDataUrl()
-
-  if (!dataUrl) {
-    alert('No data found')
-    return
+  const updateDataUrl = async (dataUrl: DataUrl) => {
+    const data = await ds.getData(dataUrl)
+    updateData?.(data)
   }
 
-  const {ts, url} = dataUrl
+  const dataUrl = await ds.getLatestDataUrl()
+  if (dataUrl) {
+    updateDataUrl(dataUrl)
+  }
 
-  const data: Bond[] = (await ds.getData(url))
-    .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
+  let currTs: Date | undefined = dataUrl?.ts
 
-  updateData?.(ts, data)
+  const calendar = document.getElementById('settlement-date-calendar')
+  if (calendar instanceof CalendarDate) {
+    const setValue = (ts?: Date) => {
+      console.log(ts)
+      calendar.value = ts ? ts.toISOString().split('T')[0] : ''
+      console.log(calendar.value)
+    }
+
+    setValue(currTs)
+    
+    calendar.isDateDisallowed = (date: Date) => {
+      return ds.hasData(date) !== true
+    }
+
+    calendar.addEventListener('change', async (e) => {
+      const {target} = e
+      if (target instanceof CalendarDate) {
+        const dataUrl = await ds.getDataUrl(new Date(target.value))
+        if (dataUrl) {
+          updateDataUrl(dataUrl)
+          currTs = dataUrl.ts
+        } else {
+          setValue(currTs)
+        }  
+      }
+    })
+  }
 
   const select = document.getElementById('settlement-date-select')
   if (select instanceof HTMLSelectElement) {
@@ -398,13 +426,10 @@ async function main() {
       e.preventDefault()
       e.stopPropagation()
 
-      const n = Number((e.target as HTMLSelectElement).value)
-      const {ts, url} = dataUrls[n]
+      const n = Number((e.target as HTMLSelectElement).value),
+        dataUrl = dataUrls[n]
 
-      const data: Bond[] = (await ds.getData(url))
-        .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
-
-      updateData?.(ts, data)
+      updateDataUrl(dataUrl)
     })
   }
 }

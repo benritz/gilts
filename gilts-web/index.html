@@ -10,24 +10,35 @@
 
       <h1 class="text-3xl font-bold text-center">UK Gilts</h1>
 
-      <canvas id="chart" width="1600" height="800"></canvas>
+      <div class="flex flex-row gap-4">
+        <canvas 
+          id="chart" 
+          width="1600" 
+          height="800"
+          class="overflow-hidden"
+        ></canvas>
 
-      <div id="controls" class="flex">
-        <div id="maturity" class="flex flex-col m-4 w-max">
-          <h2>Maturity</h2>
-          <div class="join mt-2">
-            <input class="join-item btn" type="radio" name="maturity_options" value="5" aria-label="5 years" />
-            <input class="join-item btn" type="radio" name="maturity_options" value="10" aria-label="10 years" />
-            <input class="join-item btn" type="radio" name="maturity_options" value="20" aria-label="20 years" />
-            <input class="join-item btn" type="radio" name="maturity_options" value="max" aria-label="Any Maturity" checked />
+        <div id="controls" class="flex flex-col gap-4 mr-4">
+          <div id="maturity" class="flex flex-col">
+            <h2>Maturity</h2>
+            <div class="join join-vertical">
+              <input class="join-item btn " type="radio" name="maturity_options" value="5" aria-label="5 years" />
+              <input class="join-item btn" type="radio" name="maturity_options" value="10" aria-label="10 years" />
+              <input class="join-item btn" type="radio" name="maturity_options" value="20" aria-label="20 years" />
+              <input class="join-item btn" type="radio" name="maturity_options" value="max" aria-label="Any Maturity" checked />
+            </div>
           </div>
-        </div>
-  
-        <div id="settlement-date" class="flex flex-col m-4 w-max">
-          <h2>Settlement Date</h2>
-          <div class="flex justify-center gap-2 mt-4">
-            <select id="settlement-date-select"></select>
-          </div>
+    
+          <div id="settlement-date" class="flex flex-col">
+            <h2>Settlement Date</h2>
+            <calendar-date id="settlement-date-calendar" class="cally border border-base-300 rounded-box">
+              <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+              <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
+              <calendar-month></calendar-month>
+            </calendar-date>
+    
+            <button id="today" class="btn btn-primary m-4 w-max">Today</button>
+            </div>
         </div>  
       </div>
 
