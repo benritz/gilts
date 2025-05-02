@@ -368,18 +368,42 @@ async function main() {
   const updateData = setupChart()
 
   const ds = new DataSource('DMO')
+  let currTs: Date | undefined
 
   const updateDataUrl = async (dataUrl: DataUrl) => {
     const data = await ds.getData(dataUrl)
     updateData?.(data)
+    currTs = dataUrl.ts
   }
 
-  const dataUrl = await ds.getLatestDataUrl()
-  if (dataUrl) {
-    updateDataUrl(dataUrl)
+  const latest = async () => {
+    const dataUrl = await ds.getLatestDataUrl()
+    if (dataUrl) {
+      updateDataUrl(dataUrl)
+    }  
   }
 
-  let currTs: Date | undefined = dataUrl?.ts
+  await latest()
+
+  const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar')
+  toggleSidebarBtn?.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const sidebar = document.getElementById('sidebar')
+    if (sidebar) {
+      sidebar.classList.toggle('max-md:hidden')
+      sidebar.classList.toggle('md:hidden')
+    }
+  })
+
+  const latestBtn = document.getElementById('btn-latest')
+  latestBtn?.addEventListener('click', async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    await latest()
+  })
 
   const calendar = document.getElementById('settlement-date-calendar')
   if (calendar instanceof CalendarDate) {
@@ -401,7 +425,6 @@ async function main() {
         const dataUrl = await ds.getDataUrl(new Date(target.value))
         if (dataUrl) {
           updateDataUrl(dataUrl)
-          currTs = dataUrl.ts
         } else {
           setValue(currTs)
         }  
@@ -409,29 +432,6 @@ async function main() {
     })
   }
 
-  const select = document.getElementById('settlement-date-select')
-  if (select instanceof HTMLSelectElement) {
-    const dataUrls = await ds.getDataUrls(180)
-    dataUrls.forEach(({ts}: DataUrl, n: number) => {
-      const option = document.createElement('option')
-      option.value = n.toString()
-      option.textContent = ts.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-      select.appendChild(option)
-    })
-    select.addEventListener('change', async (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-
-      const n = Number((e.target as HTMLSelectElement).value),
-        dataUrl = dataUrls[n]
-
-      updateDataUrl(dataUrl)
-    })
-  }
 }
 
 main().catch(console.error)
