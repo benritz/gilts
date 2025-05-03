@@ -107,6 +107,8 @@ function setupChart(): UpdateYieldDataFn {
     ]
     },
     options: {
+      responsive: true,
+      maintainAspectRatio: false,
       scales: {
         x: {
           type: 'time',
@@ -227,6 +229,12 @@ function setupChart(): UpdateYieldDataFn {
 
   let zoomYears: number | undefined
 
+  if (window.innerWidth < 768) {
+    zoomYears = 5
+  } else if (window.innerWidth < 1024) {
+    zoomYears = 10
+  }
+
   function zoomToYears(years?: number, restrictYieldRange: boolean = false) {
     const {data} = chart.data.datasets[0],
       x = data.map(({x}) => x)
@@ -346,20 +354,27 @@ function setupChart(): UpdateYieldDataFn {
     chart.update()
   }
 
-  const maturityGroup = document.getElementById('maturity');
+  const maturityGroup = document.getElementById('maturity')
 
-  maturityGroup?.addEventListener('change', (event) => {
-    const {target} = event
-
-    if (target instanceof HTMLInputElement && target.name === 'maturity_options') {
-      const {value} = target
-      let zoomYears: number | undefined
-      if (value !== 'max') {
-        zoomYears = Number(value)
+  if (maturityGroup) {
+    maturityGroup.addEventListener('change', (event) => {
+      const {target} = event
+  
+      if (target instanceof HTMLInputElement && target.name === 'maturity_options') {
+        const {value} = target
+        let zoomYears: number | undefined
+        if (value !== 'max') {
+          zoomYears = Number(value)
+        }
+        zoomToYears(zoomYears)
       }
-      zoomToYears(zoomYears)
-    }
-  })
+    })
+  
+    const radio = maturityGroup.querySelector<HTMLInputElement>(`input[name="maturity_options"][value="${zoomYears}"]`)
+    if (radio) {
+      radio.checked = true
+    }    
+  }
 
   return updateData
 }
@@ -392,8 +407,8 @@ async function main() {
 
     const sidebar = document.getElementById('sidebar')
     if (sidebar) {
-      sidebar.classList.toggle('max-md:hidden')
-      sidebar.classList.toggle('md:hidden')
+      sidebar.classList.toggle('max-lg:hidden')
+      sidebar.classList.toggle('lg:hidden')
     }
   })
 
