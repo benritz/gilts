@@ -21,7 +21,7 @@ export class WaitForPipeline extends Construct {
             this, 
             'waitForPipelineFn', 
             {
-                runtime: lambda.Runtime.NODEJS_LATEST, 
+                runtime: lambda.Runtime.NODEJS_22_X, 
                 architecture: lambda.Architecture.ARM_64,
                 memorySize: 128,
                 timeout: cdk.Duration.minutes(5),
@@ -35,7 +35,7 @@ export class WaitForPipeline extends Construct {
                     sourceMapMode: nodejs.SourceMapMode.INLINE,
                     sourcesContent: false,
                     target: 'es2022',
-                }
+                },
             }
         )
 
