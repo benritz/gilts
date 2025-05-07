@@ -12,6 +12,8 @@ type YieldDataPoint = ScatterDataPoint & {
 
 type UpdateYieldDataFn = (data: Data) => void
 
+type Handler = () => void
+
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
  * @param bandwidth Controls smoothness (lower = follows data more closely, higher = smoother)
@@ -81,6 +83,8 @@ function setupChart(): UpdateYieldDataFn {
   Chart.register(pluginZoom)
   Chart.register(Title)
   Chart.register(Tooltip)
+
+  const zoomCompleteHandlers: Handler[] = []
 
   const chart = new Chart<"scatter"|"line", YieldDataPoint[]>(canvas, {
     type: 'scatter',
@@ -182,11 +186,13 @@ function setupChart(): UpdateYieldDataFn {
                   enabled: true
               },
               mode: 'x',
+              onZoomComplete: () => zoomCompleteHandlers?.forEach((handler) => handler())
           },
           limits: {
             x: {
               min: 0,
               max: 1_000_000_000_000_000,
+              minRange: 1_000 * 60 * 60 * 24 * 365
             },
             y: {
               min: -1,
@@ -197,7 +203,7 @@ function setupChart(): UpdateYieldDataFn {
         }
       }
     }
-  })  
+  })
     
   const yearDiff = (a: Date, b: Date): number => {
     const monthDiff = b.getMonth() - a.getMonth(),
@@ -283,6 +289,8 @@ function setupChart(): UpdateYieldDataFn {
     zoomYears = years
   }
 
+  let anyMaturityYears: number | undefined
+
   const updateData: UpdateYieldDataFn = ({ts, data: bonds}: Data) => {
     const data = bonds.map((bond) => ({
         x: bond.MaturityDate.getTime(),
@@ -302,6 +310,8 @@ function setupChart(): UpdateYieldDataFn {
       years = yearDiff(scaleMinX, scaleMaxX)
 
     padYearRange(scaleMinX, scaleMaxX, years)
+
+    anyMaturityYears = yearDiff(scaleMinX, scaleMaxX)
 
     const minY = data.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE)
     const maxY = data.reduce((max, data) => !max || data.y > max ? data.y : max, 0)
@@ -348,7 +358,7 @@ function setupChart(): UpdateYieldDataFn {
         }
       }
 
-      zoomToYears(zoomYears, true)
+      zoomToYears(zoomYears, false)
     }
 
     chart.update()
@@ -369,11 +379,31 @@ function setupChart(): UpdateYieldDataFn {
         zoomToYears(zoomYears)
       }
     })
-  
-    const radio = maturityGroup.querySelector<HTMLInputElement>(`input[name="maturity_options"][value="${zoomYears}"]`)
-    if (radio) {
-      radio.checked = true
-    }    
+
+    const checkYear = (years: number|string) => {
+      const radio = maturityGroup.querySelector<HTMLInputElement>(`input[name="maturity_options"][value="${years}"]`)
+      if (radio) {
+        radio.checked = true
+      }
+    }
+
+    const clearChecks = () => {
+      for (const radio of maturityGroup.querySelectorAll<HTMLInputElement>(`input[name="maturity_options"]`)) {
+        radio.checked = false
+      }
+    }
+
+
+    if (zoomYears) {
+      checkYear(zoomYears)
+    }
+
+    zoomCompleteHandlers.push(() => {
+      const {min, max} = chart.scales.x,
+        years = yearDiff(new Date(min), new Date(max))
+      clearChecks()
+      checkYear(years >= (anyMaturityYears ?? 50) ? 'max' : years)
+    })
   }
 
   return updateData
@@ -422,11 +452,8 @@ async function main() {
 
   const calendar = document.getElementById('settlement-date-calendar')
   if (calendar instanceof CalendarDate) {
-    const setValue = (ts?: Date) => {
-      console.log(ts)
+    const setValue = (ts?: Date) => 
       calendar.value = ts ? ts.toISOString().split('T')[0] : ''
-      console.log(calendar.value)
-    }
 
     setValue(currTs)
     

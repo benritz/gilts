@@ -5,49 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UK Gilts</title>
   </head>
-  <body class="flex h-screen">
-    <aside id="sidebar" class="w-max bg-gray-800 flex-shrink-0 max-lg:hidden lg:flex flex-col gap-4 p-4">
-      <h2 class="text-2xl font-semibold">Controls</h2>
+  <body class="flex flex-col h-screen">
+    <header class="p-4 flex items-center justify-between bg-gray-800">
+      <h1 class="text-2xl font-semibold">UK Gilts</h1>
+      <button id="btn-toggle-sidebar">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+    </header>
 
-      <div id="maturity" class="flex flex-col gap-2">
-        <h2 class="">Maturity</h2>
-        <div class="join join-vertical">
-          <input class="join-item btn " type="radio" name="maturity_options" value="5" aria-label="5 years" />
-          <input class="join-item btn" type="radio" name="maturity_options" value="10" aria-label="10 years" />
-          <input class="join-item btn" type="radio" name="maturity_options" value="20" aria-label="20 years" />
-          <input class="join-item btn" type="radio" name="maturity_options" value="max" aria-label="Any Maturity" checked />
+    <div class="flex flex-1 overflow-hidden">
+      <aside id="sidebar" class="w-max bg-gray-800 flex-shrink-0 max-lg:hidden lg:flex flex-col gap-4 overflow-y-auto p-4">
+        <!-- <h2 class="text-2xl font-semibold">Controls</h2> -->
+  
+        <div id="maturity" class="flex flex-col gap-2">
+          <h2 class="">Maturity</h2>
+          <div class="join join-vertical">
+            <input class="join-item btn " type="radio" name="maturity_options" value="5" aria-label="5 years" />
+            <input class="join-item btn" type="radio" name="maturity_options" value="10" aria-label="10 years" />
+            <input class="join-item btn" type="radio" name="maturity_options" value="20" aria-label="20 years" />
+            <input class="join-item btn" type="radio" name="maturity_options" value="max" aria-label="Any Maturity" checked />
+          </div>
         </div>
-      </div>
-
-      <div id="settlement-date" class="flex flex-col gap-2">
-        <h2>Settlement Date</h2>
-        <calendar-date id="settlement-date-calendar" class="cally border border-base-300 rounded-box">
-          <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
-          <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
-          <calendar-month></calendar-month>
-        </calendar-date>
-
-        <div class="flex gap-2">
-          <button id="btn-latest" class="btn btn-primary">Latest</button>
+  
+        <div id="settlement-date" class="flex flex-col gap-2">
+          <h2>Settlement Date</h2>
+          <calendar-date id="settlement-date-calendar" class="cally border border-base-300 rounded-box">
+            <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+            <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
+            <calendar-month></calendar-month>
+          </calendar-date>
+  
+          <div class="flex gap-2">
+            <button id="btn-latest" class="btn btn-primary">Latest</button>
+          </div>
         </div>
-      </div>
-    </aside>
-
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <header class="p-4 flex items-center justify-between">
-        <h1 class="text-2xl font-semibold">UK Gilts</h1>
-        <button id="btn-toggle-sidebar">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-        </button>
-      </header>    
-
-      <main id="main" class="relative flex-1 overflow-y-auto p-4">
-        <canvas 
-          id="chart" 
-          class="overflow-hidden"
-        ></canvas>
-      </main>
+      </aside>
+  
+      <!-- <div class="flex-1 flex flex-col overflow-hidden"> -->
+        <main id="main" class="relative flex-1 flex flex-col overflow-hidden p-4">
+          <canvas 
+            id="chart" 
+            class="overflow-hidden"
+          ></canvas>
+        </main>
+      <!-- </div>   -->
     </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
