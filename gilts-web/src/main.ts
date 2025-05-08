@@ -424,7 +424,7 @@ async function main() {
   const latest = async () => {
     const dataUrl = await ds.getLatestDataUrl()
     if (dataUrl) {
-      updateDataUrl(dataUrl)
+      await updateDataUrl(dataUrl)
     }  
   }
 
@@ -448,6 +448,10 @@ async function main() {
     e.stopPropagation()
 
     await latest()
+    
+    if (calendar instanceof CalendarDate) {
+      calendar.value = currTs ? currTs.toISOString().split('T')[0] : ''
+    }
   })
 
   const calendar = document.getElementById('settlement-date-calendar')
