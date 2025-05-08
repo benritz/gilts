@@ -113,6 +113,13 @@ function setupChart(): UpdateYieldDataFn {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        mode: 'nearest',
+        axis: 'xy',
+        intersect: false,
+        // @ts-ignore
+        filter: (item) => item.datasetIndex === 0,
+      },      
       scales: {
         x: {
           type: 'time',
