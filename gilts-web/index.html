@@ -44,9 +44,25 @@
           id="chart" 
           class="overflow-hidden"
         ></canvas>
+        <div id="datasheet" class="overflow-x-auto">
+          <table class="table w-full table-zebra">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Coupon</th>
+                <th>Maturity Date</th>
+                <th>Maturity Years</th>
+                <th>Clean Price</th>
+                <th>Dirty Price</th>
+                <th>Yield to Maturity</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>  
+        </div>
       </main>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

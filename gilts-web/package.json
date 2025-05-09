@@ -21,6 +21,7 @@
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-zoom": "^2.2.0",
     "hyparquet": "^1.10.0",
+    "start-dom-jsx": "^1.0.0-beta.1",
     "tailwindcss": "^4.1.3"
   }
 }

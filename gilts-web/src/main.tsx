@@ -2,9 +2,10 @@ import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineControlle
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
-import { DataSource, DataUrl, Data } from './datasource';
+import { DataSource, DataUrl, Data, Bond } from './datasource';
 import "cally"
 import {CalendarDate} from "cally"
+import { h } from 'start-dom-jsx'
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
@@ -64,6 +65,18 @@ function calcYieldCurve(
   }
   
   return a;
+}
+
+function yearDiff(a: Date, b: Date): number {
+  const monthDiff = b.getMonth() - a.getMonth(),
+    dayDiff = b.getDate() - a.getDate()
+
+  let years = b.getFullYear() - a.getFullYear()
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    years--;
+  }
+
+  return years;
 }
 
 function setupChart(): UpdateYieldDataFn {
@@ -211,18 +224,6 @@ function setupChart(): UpdateYieldDataFn {
       }
     }
   })
-    
-  const yearDiff = (a: Date, b: Date): number => {
-    const monthDiff = b.getMonth() - a.getMonth(),
-      dayDiff = b.getDate() - a.getDate()
-  
-    let years = b.getFullYear() - a.getFullYear()
-    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-      years--;
-    }
-  
-    return years;
-  }
 
   const padYearRange = (min: Date, max: Date, years: number) => {
     const monthsPadding = 1/25 * years * 12
@@ -416,15 +417,50 @@ function setupChart(): UpdateYieldDataFn {
   return updateData
 }
 
+function setupDatasheet() {
+  const datasheet = document.getElementById('datasheet')
+
+  if (!datasheet) {
+    throw new Error('Datasheet element not found')
+  }
+  
+  const tbody = datasheet.querySelector("tbody")
+  if (!(tbody instanceof HTMLTableSectionElement)) {
+    throw new Error('Datasheet tbody element not found')
+  }
+
+  const updateData: UpdateYieldDataFn = ({data: bonds}: Data) => {
+    tbody.innerHTML = ''
+
+    bonds.forEach((bond: Bond) => {
+      const tr = <tr>
+        <td>{bond.Desc}</td>
+        <td>{bond.Coupon}</td>
+        <td>{bond.MaturityDate.toDateString()}</td>
+        <td>{yearDiff(bond.SettlementDate, bond.MaturityDate)}</td>
+        <td>{bond.CleanPrice}</td>
+        <td>{bond.DirtyPrice}</td>
+        <td>{bond.YieldToMaturity}</td>
+      </tr>
+      tbody.appendChild(tr)
+    })
+  }
+
+  return updateData
+}
+
 async function main() {
-  const updateData = setupChart()
+  const updateChart = setupChart()
+  const updateDatasheet = setupDatasheet()
 
   const ds = new DataSource('DMO')
+
   let currTs: Date | undefined
 
   const updateDataUrl = async (dataUrl: DataUrl) => {
     const data = await ds.getData(dataUrl)
-    updateData?.(data)
+    updateChart?.(data)
+    updateDatasheet?.(data)
     currTs = dataUrl.ts
   }
 
@@ -449,6 +485,8 @@ async function main() {
     }
   })
 
+  const toCalValue = (ts?: Date) => ts ? ts.toISOString().split('T')[0] : ''
+
   const latestBtn = document.getElementById('btn-latest')
   latestBtn?.addEventListener('click', async (e) => {
     e.preventDefault()
@@ -457,14 +495,13 @@ async function main() {
     await latest()
     
     if (calendar instanceof CalendarDate) {
-      calendar.value = currTs ? currTs.toISOString().split('T')[0] : ''
+      calendar.value = toCalValue(currTs)
     }
   })
 
   const calendar = document.getElementById('settlement-date-calendar')
   if (calendar instanceof CalendarDate) {
-    const setValue = (ts?: Date) => 
-      calendar.value = ts ? ts.toISOString().split('T')[0] : ''
+    const setValue = (ts?: Date) => calendar.value = toCalValue(ts)
 
     setValue(currTs)
     
