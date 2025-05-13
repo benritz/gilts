@@ -6,7 +6,7 @@
     <title>UK Gilts</title>
   </head>
   <body class="flex flex-col h-svh">
-    <header class="md:p-4 p-2 flex items-center justify-between bg-gray-800">
+    <header class="md:p-4 p-2 flex items-center justify-between bg-base-300">
       <h1 class="text-2xl font-semibold">UK Gilts</h1>
       <button id="btn-toggle-sidebar">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -14,7 +14,7 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-      <aside id="sidebar" class="md:w-max w-svw bg-gray-800 flex flex-shrink-0 max-lg:hidden lg:flex flex-col md:gap-4 gap-2 overflow-y-auto md:p-4 p-2">
+      <aside id="sidebar" class="md:w-max w-svw bg-base-300 flex flex-shrink-0 max-lg:hidden lg:flex flex-col md:gap-4 gap-2 overflow-y-auto md:p-4 p-2">
         <div id="maturity" class="flex flex-col gap-2">
           <h2 class="">Maturity</h2>
           <div class="join join-vertical">
@@ -39,14 +39,16 @@
         </div>
       </aside>
   
-      <main id="main" class="relative flex-1 flex flex-col overflow-hidden md:p-4 p-2">
-        <canvas 
-          id="chart" 
-          class="overflow-hidden"
-        ></canvas>
-        <div id="datasheet" class="overflow-x-auto">
+      <main id="main" class="relative flex-1 flex flex-col overflow-y-auto md:p-4 p-2">
+        <div class="flex-7/12 relative">
+          <canvas 
+            id="chart" 
+            class="overflow-hidden"
+          ></canvas>
+        </div>
+        <div id="datasheet" class="overflow-x-auto flex-5/12">
           <table class="table w-full table-zebra">
-            <thead>
+            <thead class="sticky top-0 z-10 bg-base-300">
               <tr>
                 <th>Description</th>
                 <th>Coupon</th>
