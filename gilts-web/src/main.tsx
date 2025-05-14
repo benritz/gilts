@@ -1,4 +1,4 @@
-import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement, ScatterDataPoint, Title, Tooltip } from 'chart.js';
+import { Chart, Colors, TimeScale, LinearScale, ScatterController, LineController, PointElement, LineElement, ScatterDataPoint, Title, Tooltip, ChartEvent, ActiveElement } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
@@ -11,7 +11,13 @@ type YieldDataPoint = ScatterDataPoint & {
   desc: string
 }
 
-type UpdateYieldDataFn = (data: Data) => void
+type UpdateDataFn = (data: Data) => void
+type SelectDataFn = (index: number) => void
+
+type ChartSetupResult = {
+  updateData: UpdateDataFn
+  selectData: SelectDataFn
+}
 
 type Handler = () => void
 
@@ -79,7 +85,7 @@ function yearDiff(a: Date, b: Date): number {
   return years;
 }
 
-function setupChart(): UpdateYieldDataFn {
+function setupChart(): ChartSetupResult {
   const canvas = document.getElementById('chart');
 
   if (!(canvas instanceof HTMLCanvasElement)) {
@@ -98,6 +104,37 @@ function setupChart(): UpdateYieldDataFn {
   Chart.register(Tooltip)
 
   const zoomCompleteHandlers: Handler[] = []
+
+  const onDatapointSelected = (_event: ChartEvent, elements: ActiveElement[], _chart: Chart) => {
+    if (!elements?.length) {
+      return
+    }
+
+    const current = elements.find(({datasetIndex}) => datasetIndex === 0)
+    if (!current) {
+      return
+    }
+    const {index} = current
+
+    const datasheet = document.getElementById('datasheet')
+
+    if (!datasheet) {
+      return
+    }
+
+    datasheet.querySelectorAll('tbody tr.bg-primary')
+      .forEach((tr) => tr.classList.remove('bg-primary'))
+
+    const tr = datasheet.querySelector(`tbody tr:nth-child(${index + 1})`)
+    if (tr) {
+      tr.classList.add('bg-primary')
+      tr.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center'
+      })
+    }
+  }
 
   const chart = new Chart<"scatter"|"line", YieldDataPoint[]>(canvas, {
     type: 'scatter',
@@ -183,8 +220,8 @@ function setupChart(): UpdateYieldDataFn {
                   day: 'numeric'
                 })
               ]
-            }
-          }
+            },
+          },
         },
         title: {
           display: true,
@@ -221,7 +258,9 @@ function setupChart(): UpdateYieldDataFn {
             }
           }
         }
-      }
+      },
+      onClick: onDatapointSelected,
+      onHover: onDatapointSelected,
     }
   })
 
@@ -299,7 +338,7 @@ function setupChart(): UpdateYieldDataFn {
 
   let anyMaturityYears: number | undefined
 
-  const updateData: UpdateYieldDataFn = ({ts, data: bonds}: Data) => {
+  const updateData: UpdateDataFn = ({ts, data: bonds}: Data) => {
     const data = bonds.map((bond) => ({
         x: bond.MaturityDate.getTime(),
         y: bond.YieldToMaturity,
@@ -401,7 +440,6 @@ function setupChart(): UpdateYieldDataFn {
       }
     }
 
-
     if (zoomYears) {
       checkYear(zoomYears)
     }
@@ -414,10 +452,22 @@ function setupChart(): UpdateYieldDataFn {
     })
   }
 
-  return updateData
+  const selectData: SelectDataFn = (index: number) => {
+    chart.setActiveElements([{datasetIndex: 0, index}])
+    const a = chart.getActiveElements()
+    if (a.length) {
+      const ae = a[0]
+      const {element} = ae,
+        {x,y} = element
+      chart.tooltip?.setActiveElements([ae], {x,y})
+    }
+    chart.update()
+  }  
+
+  return { updateData, selectData }
 }
 
-function setupDatasheet() {
+function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
   const datasheet = document.getElementById('datasheet')
 
   if (!datasheet) {
@@ -429,7 +479,30 @@ function setupDatasheet() {
     throw new Error('Datasheet tbody element not found')
   }
 
-  const updateData: UpdateYieldDataFn = ({data: bonds}: Data) => {
+  tbody.addEventListener('click', (e) => {
+    const {target} = e
+
+    if (!(target instanceof HTMLElement)) {
+      return
+    }
+
+    const rows = Array.from(tbody.querySelectorAll('tbody tr'))
+
+    rows.forEach((tr) => tr.classList.remove('bg-primary'))
+
+    const tr = target.closest('tr')
+    if (!tr) {
+      return
+    }
+
+    tr.classList.add('bg-primary')
+
+    const index = rows.indexOf(tr)
+
+    onDataChange?.(index)
+  })
+
+  const updateData: UpdateDataFn = ({data: bonds}: Data) => {
     tbody.innerHTML = ''
 
     bonds.forEach((bond: Bond) => {
@@ -450,8 +523,8 @@ function setupDatasheet() {
 }
 
 async function main() {
-  const updateChart = setupChart()
-  const updateDatasheet = setupDatasheet()
+  const { updateData: updateChartData, selectData: selectChartData } = setupChart()
+  const updateDatasheet = setupDatasheet(selectChartData)
 
   const ds = new DataSource('DMO')
 
@@ -459,7 +532,7 @@ async function main() {
 
   const updateDataUrl = async (dataUrl: DataUrl) => {
     const data = await ds.getData(dataUrl)
-    updateChart?.(data)
+    updateChartData?.(data)
     updateDatasheet?.(data)
     currTs = dataUrl.ts
   }
