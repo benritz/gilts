@@ -131,7 +131,7 @@ function setupChart(): ChartSetupResult {
       tr.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-        inline: 'center'
+        inline: 'start'
       })
     }
   }
@@ -454,13 +454,33 @@ function setupChart(): ChartSetupResult {
 
   const selectData: SelectDataFn = (index: number) => {
     chart.setActiveElements([{datasetIndex: 0, index}])
+
     const a = chart.getActiveElements()
     if (a.length) {
-      const ae = a[0]
-      const {element} = ae,
+      const ae = a[0],
+        {element} = ae,
         {x,y} = element
+
       chart.tooltip?.setActiveElements([ae], {x,y})
+
+      const {chartArea} = chart;
+      if (chartArea) {
+        const {left, right} = chartArea
+        const padding = (right - left) * 0.1
+
+        let panX = 0
+        if (x < left) {
+          panX = (left - x) + padding
+        } else if (x > right) {
+          panX = (right - x) - padding
+        }
+
+        if (panX) {
+          chart.pan({ x: panX }, undefined, 'default');
+        }        
+      }
     }
+
     chart.update()
   }  
 
