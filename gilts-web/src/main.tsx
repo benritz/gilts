@@ -131,7 +131,6 @@ function setupChart(): ChartSetupResult {
       tr.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-        inline: 'start'
       })
     }
   }
@@ -525,15 +524,54 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
   const updateData: UpdateDataFn = ({data: bonds}: Data) => {
     tbody.innerHTML = ''
 
+    const currencyFormat = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'GBP',
+      currencyDisplay: 'symbol',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+    const percentFormat = new Intl.NumberFormat(undefined, {
+      style: 'decimal',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+    const dateFormat = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+    })
+
+    const formatMaturity = ({MaturityYears, MaturityDays}: Bond) => {
+      const years = MaturityYears.toLocaleString() + " " + (MaturityYears > 1 ? "years" : "year")
+      const days = MaturityDays.toLocaleString() + " " + (MaturityDays > 1 ? "days" : "day")
+
+      if (MaturityYears > 0) {
+        if (MaturityDays > 0) {
+          return years + ", " + days
+        }
+        return years
+      }
+
+      if (MaturityDays > 0) {
+        return days
+      }
+
+      return "Now"
+    }
+
     bonds.forEach((bond: Bond) => {
+      
       const tr = <tr>
         <td>{bond.Desc}</td>
-        <td>{bond.Coupon}</td>
-        <td>{bond.MaturityDate.toDateString()}</td>
-        <td>{yearDiff(bond.SettlementDate, bond.MaturityDate)}</td>
-        <td>{bond.CleanPrice}</td>
-        <td>{bond.DirtyPrice}</td>
-        <td>{bond.YieldToMaturity}</td>
+        <td>{bond.Coupon}%</td>
+        <td>{percentFormat.format(bond.YieldToMaturity)}%</td>
+        <td>{dateFormat.format(bond.MaturityDate)}<br/>{formatMaturity(bond)}</td>
+        <td>{dateFormat.format(bond.NextCouponDate)}</td>
+        <td>{currencyFormat.format(bond.CleanPrice)}</td>
+        <td>{currencyFormat.format(bond.DirtyPrice)}</td>
       </tr>
       tbody.appendChild(tr)
     })

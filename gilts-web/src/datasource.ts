@@ -11,10 +11,13 @@ export type Bond = {
     DirtyPrice: number,
     Coupon: number,
     SettlementDate: Date,
+    NextCouponDate: Date,
     MaturityDate: Date,
+    MaturityYears: number,
+    MaturityDays: number,
     YieldToMaturity: number,
 }
-  
+
 const baseUrl = `${import.meta.env.VITE_BASE_URL ?? ''}/data`
   
 export type DataUrl = {
