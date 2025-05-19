@@ -8,7 +8,7 @@
   <body class="flex flex-col h-svh">
     <header class="md:p-4 p-2 flex items-center justify-between bg-base-300">
       <h1 class="text-2xl font-semibold">UK Gilts</h1>
-      <button id="btn-toggle-sidebar">
+      <button id="btn-toggle-sidebar" class="btn btn-circle btn-ghost">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
       </button>
     </header>
@@ -37,6 +37,11 @@
             <button id="btn-latest" class="btn btn-primary">Latest</button>
           </div>
         </div>
+
+        <div id="display-options" class="flex flex-col gap-2">
+          <!-- <h2>Display Options</h2> -->
+          <label class="flex cursor-pointer"><span class="flex-1">Tooltips</span><input class="toggle" type="checkbox" name="display_tooltips" checked /></label>
+        </div>
       </aside>
   
       <main id="main" class="relative flex-1 flex flex-col overflow-y-auto md:p-4 p-2">
@@ -50,13 +55,11 @@
           <table class="table w-full">
             <thead class="sticky top-0 z-10 bg-base-300">
               <tr>
-                <th>Description</th>
-                <th>Coupon</th>
-                <th>YTM</th>
-                <th>Maturity</th>
-                <th>Next Coupon Date</th>
-                <th>Clean Price</th>
-                <th>Dirty Price</th>
+                <th class="p-2 md:p-4">Description</th>
+                <th class="p-2 md:p-4">Coupon</th>
+                <th class="p-2 md:p-4">YTM</th>
+                <th class="p-2 md:p-4">Maturity</th>
+                <th class="p-2 md:p-4">Price</th>
               </tr>
             </thead>
             <tbody></tbody>

@@ -156,6 +156,9 @@ function setupChart(): ChartSetupResult {
         data: [],
         pointRadius: 0,
         tension: 0.4,
+        pointHitRadius: 0,
+        pointHoverRadius: 0,
+        
       },      
     ]
     },
@@ -168,6 +171,7 @@ function setupChart(): ChartSetupResult {
         intersect: false,
         // @ts-ignore
         filter: (item) => item.datasetIndex === 0,
+
       },      
       scales: {
         x: {
@@ -449,6 +453,25 @@ function setupChart(): ChartSetupResult {
       clearChecks()
       checkYear(years >= (anyMaturityYears ?? 50) ? 'max' : years)
     })
+
+    const displayOptions = document.getElementById('display-options')
+    if (displayOptions) {
+      displayOptions.addEventListener('change', (e) => {
+        const {target} = e
+
+        if (!(target instanceof HTMLInputElement)) {
+          return
+        }
+
+        if (target.name === 'display_tooltips') {
+          const {plugins} = chart.options
+          if (plugins && plugins.tooltip) {
+            plugins.tooltip.enabled = target.checked
+            chart.update()
+          }
+        }
+      })
+    }
   }
 
   const selectData: SelectDataFn = (index: number) => {
@@ -565,13 +588,11 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
     bonds.forEach((bond: Bond) => {
       
       const tr = <tr>
-        <td>{bond.Desc}</td>
-        <td>{bond.Coupon}%</td>
-        <td>{percentFormat.format(bond.YieldToMaturity)}%</td>
-        <td>{dateFormat.format(bond.MaturityDate)}<br/>{formatMaturity(bond)}</td>
-        <td>{dateFormat.format(bond.NextCouponDate)}</td>
-        <td>{currencyFormat.format(bond.CleanPrice)}</td>
-        <td>{currencyFormat.format(bond.DirtyPrice)}</td>
+        <td class="p-2 md:p-4">{bond.Desc}<br/>{bond.ISIN}</td>
+        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{bond.Coupon}%</span><br/><span class="whitespace-nowrap">{dateFormat.format(bond.NextCouponDate)}</span></td>
+        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{percentFormat.format(bond.YieldToMaturity)}%</span></td>
+        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{dateFormat.format(bond.MaturityDate)}</span><br/><span class="whitespace-nowrap">{formatMaturity(bond)}</span></td>
+        <td class="p-2 md:p-4">{currencyFormat.format(bond.CleanPrice)}<br/>{currencyFormat.format(bond.DirtyPrice)}</td>
       </tr>
       tbody.appendChild(tr)
     })
