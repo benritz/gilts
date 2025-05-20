@@ -21,6 +21,27 @@ type ChartSetupResult = {
 
 type Handler = () => void
 
+function getOption(name: string, defaultValue: string): string {
+  return localStorage.getItem(name) ?? defaultValue
+}
+
+function setOption(name: string, value: string): void {
+  if (value === '') {
+    localStorage.removeItem(name)
+    return
+  }
+  localStorage.setItem(name, value)
+}
+
+function chartTooltipEnabled(): boolean {
+  return getOption('chartTooltip', '1') === '1'
+}
+
+function setChartTooltipEnabled(enabled: boolean): void {
+  setOption('chartTooltip', enabled ? '' : '0')
+}
+
+
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
  * @param bandwidth Controls smoothness (lower = follows data more closely, higher = smoother)
@@ -225,6 +246,7 @@ function setupChart(): ChartSetupResult {
               ]
             },
           },
+          enabled: chartTooltipEnabled(),
         },
         title: {
           display: true,
@@ -456,6 +478,10 @@ function setupChart(): ChartSetupResult {
 
     const displayOptions = document.getElementById('display-options')
     if (displayOptions) {
+      const input = displayOptions.querySelector<HTMLInputElement>('input[name="display_tooltips"]')
+      if (input) {
+        input.checked = chart.options.plugins?.tooltip?.enabled ? true : false
+      }
       displayOptions.addEventListener('change', (e) => {
         const {target} = e
 
@@ -467,6 +493,7 @@ function setupChart(): ChartSetupResult {
           const {plugins} = chart.options
           if (plugins && plugins.tooltip) {
             plugins.tooltip.enabled = target.checked
+            setChartTooltipEnabled(target.checked)
             chart.update()
           }
         }
