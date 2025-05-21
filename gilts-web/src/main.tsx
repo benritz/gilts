@@ -21,26 +21,45 @@ type ChartSetupResult = {
 
 type Handler = () => void
 
-function getOption(name: string, defaultValue: string): string {
+type MaturityRange = number | "max" | undefined
+
+function getOption(name: string, defaultValue?: string): string|undefined {
   return localStorage.getItem(name) ?? defaultValue
 }
 
-function setOption(name: string, value: string): void {
-  if (value === '') {
+function setOption(name: string, value?: string): void {
+  if (value === undefined || value === '') {
     localStorage.removeItem(name)
     return
   }
   localStorage.setItem(name, value)
 }
 
-function chartTooltipEnabled(): boolean {
+function chartTooltipOption(): boolean {
   return getOption('chartTooltip', '1') === '1'
 }
 
-function setChartTooltipEnabled(enabled: boolean): void {
-  setOption('chartTooltip', enabled ? '' : '0')
+function setChartTooltipOption(enabled: boolean): void {
+  setOption('chartTooltip', enabled ? undefined : '0')
 }
 
+function maturityRangeOption(): MaturityRange {
+  const value = getOption('maturityRange')
+
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (value === 'max') {
+    return 'max'
+  }
+
+  return Number(value)
+}
+
+function setMaturityRangeOption(years: MaturityRange): void {
+  setOption('maturityRange', typeof years === 'number' ? years.toString() : years)
+}
 
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
@@ -246,7 +265,7 @@ function setupChart(): ChartSetupResult {
               ]
             },
           },
-          enabled: chartTooltipEnabled(),
+          enabled: chartTooltipOption(),
         },
         title: {
           display: true,
@@ -305,15 +324,21 @@ function setupChart(): ChartSetupResult {
     ]
   }
 
-  let zoomYears: number | undefined
+  let maturityRange = maturityRangeOption()
 
-  if (window.innerWidth < 768) {
-    zoomYears = 5
-  } else if (window.innerWidth < 1024) {
-    zoomYears = 10
+  if (!maturityRange) {
+    if (window.innerWidth < 768) {
+      maturityRange = 5
+    } else if (window.innerWidth < 1024) {
+      maturityRange = 10
+    }
   }
 
-  function zoomToYears(years?: number, restrictYieldRange: boolean = false) {
+  function setMaturityRange(range: MaturityRange, restrictYieldRange: boolean = false) {
+    if (range === undefined) {
+      range = "max"
+    }
+
     const {data} = chart.data.datasets[0],
       x = data.map(({x}) => x)
 
@@ -322,15 +347,15 @@ function setupChart(): ChartSetupResult {
 
     let zoomXMax
 
-    if (years) {
-      zoomXMax = new Date(xMin)
-      zoomXMax.setFullYear(zoomXMax.getFullYear() + years)
-      padYearRange(zoomXMin, zoomXMax, years)
-    } else {
+    if (range === "max") {
       const xMax = x.reduce((max, x) => !max || x > max ? x : max, new Date(0).getTime())
       zoomXMax = new Date(xMax)
       const diff = yearDiff(zoomXMin, zoomXMax)
       padYearRange(zoomXMin, zoomXMax, diff)
+    } else {
+      zoomXMax = new Date(xMin)
+      zoomXMax.setFullYear(zoomXMax.getFullYear() + range)
+      padYearRange(zoomXMin, zoomXMax, range)
     }
 
     chart.zoomScale('x', {
@@ -358,10 +383,10 @@ function setupChart(): ChartSetupResult {
       }, 'default')
     }
 
-    zoomYears = years
+    maturityRange = range
   }
 
-  let anyMaturityYears: number | undefined
+  let maxMaturityYears: number | undefined
 
   const updateData: UpdateDataFn = ({ts, data: bonds}: Data) => {
     const data = bonds.map((bond) => ({
@@ -383,7 +408,7 @@ function setupChart(): ChartSetupResult {
 
     padYearRange(scaleMinX, scaleMaxX, years)
 
-    anyMaturityYears = yearDiff(scaleMinX, scaleMaxX)
+    maxMaturityYears = yearDiff(scaleMinX, scaleMaxX)
 
     const minY = data.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE)
     const maxY = data.reduce((max, data) => !max || data.y > max ? data.y : max, 0)
@@ -430,7 +455,7 @@ function setupChart(): ChartSetupResult {
         }
       }
 
-      zoomToYears(zoomYears, false)
+      setMaturityRange(maturityRange, false)
     }
 
     chart.update()
@@ -442,38 +467,43 @@ function setupChart(): ChartSetupResult {
     maturityGroup.addEventListener('change', (event) => {
       const {target} = event
   
-      if (target instanceof HTMLInputElement && target.name === 'maturity_options') {
+      if (target instanceof HTMLInputElement && target.name === 'maturity_range') {
         const {value} = target
-        let zoomYears: number | undefined
-        if (value !== 'max') {
-          zoomYears = Number(value)
+
+        let range: MaturityRange
+        if (value === 'max') {
+          range = 'max'
+        } else {
+          range = Number(value)
+          if (isNaN(range)) {
+            range = undefined
+          }
         }
-        zoomToYears(zoomYears)
+        setMaturityRangeOption(range)
+        setMaturityRange(range)
       }
     })
 
-    const checkYear = (years: number|string) => {
-      const radio = maturityGroup.querySelector<HTMLInputElement>(`input[name="maturity_options"][value="${years}"]`)
+    const checkOption = (years: MaturityRange) => {
+      const radio = maturityGroup.querySelector<HTMLInputElement>(`input[name="maturity_range"][value="${years ?? "max"}"]`)
       if (radio) {
         radio.checked = true
       }
     }
 
     const clearChecks = () => {
-      for (const radio of maturityGroup.querySelectorAll<HTMLInputElement>(`input[name="maturity_options"]`)) {
+      for (const radio of maturityGroup.querySelectorAll<HTMLInputElement>(`input[name="maturity_range"]`)) {
         radio.checked = false
       }
     }
 
-    if (zoomYears) {
-      checkYear(zoomYears)
-    }
+    checkOption(maturityRange)
 
     zoomCompleteHandlers.push(() => {
       const {min, max} = chart.scales.x,
         years = yearDiff(new Date(min), new Date(max))
       clearChecks()
-      checkYear(years >= (anyMaturityYears ?? 50) ? 'max' : years)
+      checkOption(years >= (maxMaturityYears ?? 50) ? 'max' : years)
     })
 
     const displayOptions = document.getElementById('display-options')
@@ -493,7 +523,7 @@ function setupChart(): ChartSetupResult {
           const {plugins} = chart.options
           if (plugins && plugins.tooltip) {
             plugins.tooltip.enabled = target.checked
-            setChartTooltipEnabled(target.checked)
+            setChartTooltipOption(target.checked)
             chart.update()
           }
         }
