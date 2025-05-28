@@ -9,6 +9,7 @@ import { h } from 'start-dom-jsx'
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
+  maturityDate: Date
 }
 
 type UpdateDataFn = (data: Data) => void
@@ -76,6 +77,7 @@ function calcYieldCurve(
   const minX = sorted[0].x;
   const maxX = sorted[sorted.length - 1].x;
   const range = maxX - minX;
+  const emptyDate = new Date()
   
   const a = [];
   
@@ -107,6 +109,7 @@ function calcYieldCurve(
       x: x,
       y: weightSum > 0 ? weightedSum / weightSum : 0,
       desc: '',
+      maturityDate: emptyDate,
     });
   }
   
@@ -215,27 +218,28 @@ function setupChart(): ChartSetupResult {
       },      
       scales: {
         x: {
-          type: 'time',
-          time: {
-            unit: 'month',
-            displayFormats: {
-              month: 'MMM yyyy'
-            },
-            tooltipFormat: 'MMM yyyy',
-          },
+          type: 'linear',
           title: {
             display: true,
-            text: 'Maturity Date'
+            text: 'Maturity Years'
           },
           ticks: {
-            autoSkip: true,
-          },
+            autoSkip: false,
+            callback: (value) => {
+              const numValue = Number(value);
+              if (Number.isFinite(numValue)) {
+                return numValue.toFixed(0);
+              }
+              return value;
+            },
+          },          
         },
         y: {
+          type: 'linear',
           beginAtZero: false,
           title: {
             display: true,
-            text: 'Yield to Maturity'
+            text: 'Yield to Maturity',
           },
         }
       },
@@ -253,11 +257,11 @@ function setupChart(): ChartSetupResult {
             label: (ctx) => {
               const { dataset, dataIndex } = ctx,
                 data = dataset?.data[dataIndex],
-                {x,y} = data as unknown as YieldDataPoint
+                {y,maturityDate} = data as unknown as YieldDataPoint
 
               return [
                 `${y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
-                new Date(x).toLocaleDateString(undefined, {
+                new Date(maturityDate).toLocaleDateString(undefined, {
                   year: 'numeric',
                   month: 'short',
                   day: 'numeric'
@@ -308,11 +312,13 @@ function setupChart(): ChartSetupResult {
     }
   })
 
-  const padYearRange = (min: Date, max: Date, years: number) => {
-    const monthsPadding = 1/25 * years * 12
+  const padYearRange = (min: number, max: number, years: number): [number,number] => {
+    const padding = 1/25 * years
 
-    min.setUTCMonth(min.getUTCMonth() - monthsPadding)
-    max.setUTCMonth(max.getUTCMonth() + monthsPadding)
+    return [
+      Math.floor(min - padding),
+      Math.ceil(max + padding)
+    ]
   }
 
   const padYieldRange = (min: number, max: number) => {
@@ -342,29 +348,26 @@ function setupChart(): ChartSetupResult {
     const {data} = chart.data.datasets[0],
       x = data.map(({x}) => x)
 
-    const xMin = x.reduce((min, x) => !min || x < min ? x : min, new Date(8_640_000_000_000_000).getTime())
-    const zoomXMin = new Date(xMin)
+    const xMin = x.reduce((min, x) => !min || x < min ? x : min, 8_640_000_000_000_000)
 
-    let zoomXMax
+    let xMax: number
 
     if (range === "max") {
-      const xMax = x.reduce((max, x) => !max || x > max ? x : max, new Date(0).getTime())
-      zoomXMax = new Date(xMax)
-      const diff = yearDiff(zoomXMin, zoomXMax)
-      padYearRange(zoomXMin, zoomXMax, diff)
+      xMax = x.reduce((max, x) => !max || x > max ? x : max, 0)
+      const diff = xMax - xMin
+      padYearRange(xMin, xMax, diff)
     } else {
-      zoomXMax = new Date(xMin)
-      zoomXMax.setFullYear(zoomXMax.getFullYear() + range)
-      padYearRange(zoomXMin, zoomXMax, range)
+      xMax = xMin + range
+      padYearRange(xMin, xMax, range)
     }
 
     chart.zoomScale('x', {
-      min: zoomXMin.getTime(),
-      max: zoomXMax.getTime()
+      min: xMin,
+      max: xMax
     }, 'default')
 
     if (restrictYieldRange) {
-      const {minY, maxY} = data.filter(({x}) => x >= zoomXMin.getTime() && x <= zoomXMax.getTime())
+      const {minY, maxY} = data.filter(({x}) => x >= xMin && x <= xMax)
         .reduce((acc, {y}) => {
           if (y < acc.minY) {
             acc.minY = y
@@ -390,25 +393,23 @@ function setupChart(): ChartSetupResult {
 
   const updateData: UpdateDataFn = ({ts, data: bonds}: Data) => {
     const data = bonds.map((bond) => ({
-        x: bond.MaturityDate.getTime(),
+        x: bond.MaturityYears + (bond.MaturityDays / 365),
         y: bond.YieldToMaturity,
         desc: bond.Desc,
+        maturityDate: bond.MaturityDate,
       }))
 
     chart.data.labels = data.map(({x}) => x)
     chart.data.datasets[0].data = data
     chart.data.datasets[1].data = calcYieldCurve(data, 0.2, 100)
 
-    const minX = data.reduce((min, data) => !min || data.x < min ? data.x : min, new Date(8_640_000_000_000_000).getTime())
-    const maxX = data.reduce((max, data) => !max || data.x > max ? data.x : max, new Date(0).getTime())
+    const minX = data.reduce((min, data) => !min || data.x < min ? data.x : min, 8_640_000_000_000_000)
+    const maxX = data.reduce((max, data) => !max || data.x > max ? data.x : max, 0)
 
-    const scaleMinX = new Date(minX),
-      scaleMaxX = new Date(maxX),
-      years = yearDiff(scaleMinX, scaleMaxX)
+    const years = maxX - minX,
+      [scaleMinX, scaleMaxX] = padYearRange(minX, maxX, years)
 
-    padYearRange(scaleMinX, scaleMaxX, years)
-
-    maxMaturityYears = yearDiff(scaleMinX, scaleMaxX)
+    maxMaturityYears = scaleMaxX - scaleMinX
 
     const minY = data.reduce((min, data) => !min || data.y < min ? data.y : min, Number.MAX_VALUE)
     const maxY = data.reduce((max, data) => !max || data.y > max ? data.y : max, 0)
@@ -419,8 +420,8 @@ function setupChart(): ChartSetupResult {
     if (scales) {
       const {x,y} = scales
       if (x) {
-        x.min = scaleMinX.getTime()
-        x.max = scaleMaxX.getTime()
+        x.min = scaleMinX
+        x.max = scaleMaxX
       }
       if (y) {
         y.min = scaleMinY
@@ -445,8 +446,8 @@ function setupChart(): ChartSetupResult {
         if (limits) {
           const {x,y} = limits
           if (x) {
-            x.min = scaleMinX.getTime()
-            x.max = scaleMaxX.getTime()
+            x.min = scaleMinX
+            x.max = scaleMaxX
           }
           if (y) {
             y.min = scaleMinY

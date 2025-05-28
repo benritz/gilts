@@ -156,9 +156,22 @@ export class DataSource {
         file = await asyncBufferFromUrl({ url })
 
       const data = (await parquetReadObjects({ file }) as Bond[])
-        .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))  
+        .filter((bond) => !bond.Desc.toLowerCase().includes('index-linked'))
+        .map((bond) => mapToNumber(bond) as Bond)
 
       return { ts, data }
     }
 }
-  
+
+// map the parquet bigint values to numbers
+const mapToNumber = (obj: Record<string, unknown>): Record<string, unknown> => {
+  const newObj: any = {}
+  for (const key of Object.keys(obj)) {
+    let v = obj[key]
+    if (typeof v === 'bigint') {
+      v = Number(v)
+    }
+    newObj[key] = v
+  }
+  return newObj
+}
