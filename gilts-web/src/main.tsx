@@ -44,6 +44,14 @@ function setChartTooltipOption(enabled: boolean): void {
   setOption('chartTooltip', enabled ? undefined : '0')
 }
 
+function followOnHoverOption(): boolean {
+  return getOption('followOnHover', '1') === '1'
+}
+
+function setFollowOnHoverOption(enabled: boolean): void {
+  setOption('followOnHover', enabled ? undefined : '0')
+}
+
 function maturityRangeOption(): MaturityRange {
   const value = getOption('maturityRange')
 
@@ -224,7 +232,6 @@ function setupChart(): ChartSetupResult {
             text: 'Maturity Years'
           },
           ticks: {
-            autoSkip: false,
             callback: (value) => {
               const numValue = Number(value);
               if (Number.isFinite(numValue)) {
@@ -308,12 +315,14 @@ function setupChart(): ChartSetupResult {
         }
       },
       onClick: onDatapointSelected,
-      onHover: onDatapointSelected,
+      onHover: followOnHoverOption() ? onDatapointSelected : undefined,
     }
   })
 
   const padYearRange = (min: number, max: number, years: number): [number,number] => {
     const padding = 1/25 * years
+
+    console.log(years, padding)
 
     return [
       Math.floor(min - padding),
@@ -348,17 +357,17 @@ function setupChart(): ChartSetupResult {
     const {data} = chart.data.datasets[0],
       x = data.map(({x}) => x)
 
-    const xMin = x.reduce((min, x) => !min || x < min ? x : min, 8_640_000_000_000_000)
+    let xMin = x.reduce((min, x) => !min || x < min ? x : min, 8_640_000_000_000_000)
 
     let xMax: number
 
     if (range === "max") {
       xMax = x.reduce((max, x) => !max || x > max ? x : max, 0)
-      const diff = xMax - xMin
-      padYearRange(xMin, xMax, diff)
+      const diff = xMax - xMin;
+      [xMin, xMax] = padYearRange(xMin, xMax, diff)
     } else {
-      xMax = xMin + range
-      padYearRange(xMin, xMax, range)
+      xMax = xMin + range;
+      [xMin, xMax] = padYearRange(xMin, xMax, range)
     }
 
     chart.zoomScale('x', {
@@ -509,10 +518,16 @@ function setupChart(): ChartSetupResult {
 
     const displayOptions = document.getElementById('display-options')
     if (displayOptions) {
-      const input = displayOptions.querySelector<HTMLInputElement>('input[name="display_tooltips"]')
-      if (input) {
-        input.checked = chart.options.plugins?.tooltip?.enabled ? true : false
+      const tooltipsInput = displayOptions.querySelector<HTMLInputElement>('input[name="display_tooltips"]')
+      if (tooltipsInput) {
+        tooltipsInput.checked = chart.options.plugins?.tooltip?.enabled ? true : false
       }
+
+      const followOnHoverInput = displayOptions.querySelector<HTMLInputElement>('input[name="follow_on_hover"]')
+      if (followOnHoverInput) {
+        followOnHoverInput.checked = !!chart.options.onHover
+      }
+
       displayOptions.addEventListener('change', (e) => {
         const {target} = e
 
@@ -520,13 +535,21 @@ function setupChart(): ChartSetupResult {
           return
         }
 
-        if (target.name === 'display_tooltips') {
-          const {plugins} = chart.options
-          if (plugins && plugins.tooltip) {
-            plugins.tooltip.enabled = target.checked
-            setChartTooltipOption(target.checked)
-            chart.update()
+        switch (target.name) {
+          case 'display_tooltips': {
+            const {plugins} = chart.options
+            if (plugins && plugins.tooltip) {
+              plugins.tooltip.enabled = target.checked
+              setChartTooltipOption(target.checked)
+              chart.update()
+            }
           }
+          break
+          case 'follow_on_hover': {
+            chart.options.onHover = target.checked ? onDatapointSelected : undefined
+            setFollowOnHoverOption(target.checked)
+          }
+          break
         }
       })
     }
