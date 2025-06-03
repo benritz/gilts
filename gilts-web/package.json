@@ -22,6 +22,7 @@
     "chartjs-plugin-zoom": "^2.2.0",
     "hyparquet": "1.13.5",
     "start-dom-jsx": "^1.0.0-beta.1",
-    "tailwindcss": "4.1.7"
+    "tailwindcss": "4.1.7",
+    "vite-plugin-html": "^3.2.2"
   }
 }
