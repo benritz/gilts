@@ -322,8 +322,6 @@ function setupChart(): ChartSetupResult {
   const padYearRange = (min: number, max: number, years: number): [number,number] => {
     const padding = 1/25 * years
 
-    console.log(years, padding)
-
     return [
       Math.floor(min - padding),
       Math.ceil(max + padding)
@@ -669,11 +667,11 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
     bonds.forEach((bond: Bond) => {
       
       const tr = <tr>
-        <td class="p-2 md:p-4">{bond.Desc}<br/>{bond.ISIN}</td>
-        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{bond.Coupon}%</span><br/><span class="whitespace-nowrap">{dateFormat.format(bond.NextCouponDate)}</span></td>
-        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{percentFormat.format(bond.YieldToMaturity)}%</span></td>
-        <td class="p-2 md:p-4"><span class="whitespace-nowrap">{dateFormat.format(bond.MaturityDate)}</span><br/><span class="whitespace-nowrap">{formatMaturity(bond)}</span></td>
-        <td class="p-2 md:p-4">{currencyFormat.format(bond.CleanPrice)}<br/>{currencyFormat.format(bond.DirtyPrice)}</td>
+        <td class="p-2 desktop:p-4">{bond.Desc}<br/>{bond.ISIN}</td>
+        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{bond.Coupon}%</span><br/><span class="whitespace-nowrap">{dateFormat.format(bond.NextCouponDate)}</span></td>
+        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{percentFormat.format(bond.YieldToMaturity)}%</span></td>
+        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{dateFormat.format(bond.MaturityDate)}</span><br/><span class="whitespace-nowrap">{formatMaturity(bond)}</span></td>
+        <td class="p-2 desktop:p-4">{currencyFormat.format(bond.CleanPrice)}<br/>{currencyFormat.format(bond.DirtyPrice)}</td>
       </tr>
       tbody.appendChild(tr)
     })
