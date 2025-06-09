@@ -9,20 +9,20 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "daisyui": "5.0.35",
+    "daisyui": "5.0.43",
     "typescript": "5.8.3",
     "vite": "6.3.5"
   },
   "dependencies": {
-    "@tailwindcss/vite": "4.1.7",
+    "@tailwindcss/vite": "4.1.8",
     "cally": "^0.8.0",
     "chart.js": "4.4.9",
     "chartjs": "^0.3.24",
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-zoom": "^2.2.0",
-    "hyparquet": "1.13.5",
+    "hyparquet": "1.15.0",
     "start-dom-jsx": "^1.0.0-beta.1",
-    "tailwindcss": "4.1.7",
+    "tailwindcss": "4.1.8",
     "vite-plugin-html": "^3.2.2"
   }
 }
