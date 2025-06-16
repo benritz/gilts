@@ -33,6 +33,7 @@ type Bond struct {
 	CleanPrice       float64
 	DirtyPrice       float64
 	YieldToMaturity  float64
+	AccruedAmount    float64
 }
 
 func NewUKGilt(source string, settlementDate time.Time) *Bond {
@@ -44,6 +45,15 @@ func NewUKGilt(source string, settlementDate time.Time) *Bond {
 	}
 }
 
+// MaturityYears calculates the number of years and days from the settlement date to the maturity date.
+// It returns an error if the maturity date is before the settlement date.
+// Parameters:
+// settlementDate: The date when the bond is settled.
+// maturityDate:   The date when the bond matures.
+// Returns:
+// years:          The number of full years until maturity.
+// days:           The number of days after the last full year until maturity.
+// error:          An error if the maturity date is before the settlement date.
 func MaturityYears(settlementDate, maturityDate time.Time) (int, int, error) {
 	if maturityDate.Before(settlementDate) {
 		return 0, 0, ErrMaturityDateBeforeSettlement
@@ -125,56 +135,6 @@ func CleanPrice(C, y, F float64, n, m, tn, tb int) float64 {
 	}
 
 	return price
-}
-
-func CleanPriceDerivative(C, y, F float64, n, m, tn, tb int) float64 {
-	CP := C / 100 / float64(n) * F
-	ypp := y / 100 / float64(n)
-	dYppDy := 1 / (100 * float64(n))
-	r := float64(tn) / float64(tb)
-
-	derivative := 0.0
-
-	// Derivative of the maturity payment part
-	mp := F
-	mAdj := m
-	if r > 0 {
-		mp += CP * r
-		mAdj--
-	}
-
-	term1Numerator := -mp * (float64(mAdj) + r)
-	term1Denominator := math.Pow(1+ypp, float64(mAdj)+r+1)
-	derivative += term1Numerator / term1Denominator * dYppDy
-
-	// Derivative of the coupon payment parts
-	for j := int(1); j <= m; j++ {
-		termNumerator := -CP * float64(j)
-		termDenominator := math.Pow(1+ypp, float64(j)+1)
-		derivative += termNumerator / termDenominator * dYppDy
-	}
-
-	return derivative
-}
-
-func CleanPriceYieldToMaturity(C, F, P float64, n, m, tn, tb int, y, t float64, i int) (float64, error) {
-	for range i {
-		p := CleanPrice(C, y, F, n, m, tn, tb)
-
-		dp := p - P
-		if math.Abs(dp) < t {
-			return y, nil
-		}
-
-		d := CleanPriceDerivative(C, y, F, n, m, tn, tb)
-		if math.Abs(d) < 1e-12 {
-			return 0, ErrYieldToMaturityDerivativeTooSmall
-		}
-
-		y = y - dp/d
-	}
-
-	return 0, ErrYieldToMaturityNoConvergence
 }
 
 // DirtyPrice calculates the bond price when cash flows occur at unequal intervals.
@@ -280,12 +240,12 @@ func DirtyPriceYieldToMaturity(C, F, P float64, n, m, tn, tb int, y, t float64, 
 	return 0, ErrYieldToMaturityNoConvergence
 }
 
-// EstimatedYieldToMaturity calculates a rough estimate of the yield to maturity used as a starting
-// point for numerical methods to calculate a more accurate YTM.
+// EstimatedYieldToMaturity calculates a rough estimate of the yield to maturity which can
+// be used as a starting point for numerical methods to calculate a more accurate YTM.
 //
 //	C: Annual coupon rate.
 //	F: Face value of the bond.
-//	P: Market price of the bond.
+//	P: Clean price of the bond.
 //	n: Number of years to maturity.
 //
 // Returns:
@@ -342,16 +302,12 @@ func CompleteBond(b *Bond) error {
 		return ErrInvalidCleanPrice
 	}
 
-	if b.DirtyPrice < 0 {
-		return ErrInvalidDirtyPrice
-	}
-
 	if b.YieldToMaturity < 0 {
 		return ErrInvalidYieldToMaturity
 	}
 
-	// requires either a price or yield to maturity to calulate the other
-	if b.CleanPrice == 0 && b.DirtyPrice == 0 && b.YieldToMaturity == 0 {
+	// requires either a clean price or yield to maturity to calulate the other
+	if b.CleanPrice == 0 && b.YieldToMaturity == 0 {
 		return ErrMissingPriceAndYield
 	}
 
@@ -391,28 +347,27 @@ func CompleteBond(b *Bond) error {
 		b.PrevCouponDate = b.NextCouponDate.AddDate(0, -6, 0)
 	}
 
-	b.RemainingDays = int(math.Floor(b.NextCouponDate.Sub(b.SettlementDate).Hours() / 24))
-	b.AccruedDays = int(math.Floor(b.SettlementDate.Sub(b.PrevCouponDate).Hours() / 24))
-	b.CouponPeriodDays = int(math.Floor(b.NextCouponDate.Sub(b.PrevCouponDate).Hours() / 24))
-
-	accruedAmount := float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
-
-	if b.CleanPrice > 0 && b.DirtyPrice > 0 {
-		// validate dirty price using accrued amount
-		// trust the clean price and recalculate dirty price if the difference is >= 2.5 bps
-		dp := b.CleanPrice + accruedAmount - b.DirtyPrice
-
-		if math.Abs(dp) >= 0.025 {
-			b.DirtyPrice = b.CleanPrice + accruedAmount
-		}
-	}
-
 	// TODO need to account for different day-count conventions 360/30 vs Actual/Actual
 	// Fine for UK gilts, US treasuries
 	// Bad for euro bonds which use 30/360
-	b.CouponPeriods = (int(b.MaturityYears) * 2) + int(math.Ceil(float64(b.MaturityDays)/365.0*2))
+	b.RemainingDays = int(math.Floor(b.NextCouponDate.Sub(b.SettlementDate).Hours() / 24))
+	b.AccruedDays = int(math.Floor(b.SettlementDate.Sub(b.PrevCouponDate).Hours() / 24))
+	b.CouponPeriodDays = int(math.Floor(b.NextCouponDate.Sub(b.PrevCouponDate).Hours() / 24))
+	b.AccruedAmount = float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
+
+	b.CouponPeriods = b.MaturityYears * 2
+
+	endDate := time.Date(b.SettlementDate.Year()+1, time.January, 1, 0, 0, 0, 0, b.SettlementDate.Location())
+	if b.NextCouponDate.Before(endDate) {
+		b.CouponPeriods++
+		if b.NextCouponDate.AddDate(0, 6, 0).Before(endDate) {
+			b.CouponPeriods++
+		}
+	}
 
 	if b.YieldToMaturity == 0 {
+		b.DirtyPrice = b.CleanPrice + b.AccruedAmount
+
 		estimatedYTM := EstimatedYieldToMaturity(
 			b.Coupon,
 			b.FacePrice,
@@ -420,47 +375,25 @@ func CompleteBond(b *Bond) error {
 			float64(b.MaturityYears)+float64(b.MaturityDays)/365.0,
 		)
 
-		var (
-			ytm float64
-			err error
+		ytm, err := DirtyPriceYieldToMaturity(
+			b.Coupon,
+			b.FacePrice,
+			b.DirtyPrice,
+			2,
+			b.CouponPeriods,
+			b.RemainingDays,
+			b.CouponPeriodDays,
+			estimatedYTM,
+			0.001,
+			1_000,
 		)
-
-		if b.DirtyPrice > 0 {
-			ytm, err = DirtyPriceYieldToMaturity(
-				b.Coupon,
-				b.FacePrice,
-				b.DirtyPrice,
-				2,
-				b.CouponPeriods,
-				b.RemainingDays,
-				b.CouponPeriodDays,
-				estimatedYTM,
-				0.001,
-				1_000,
-			)
-		} else {
-			ytm, err = CleanPriceYieldToMaturity(
-				b.Coupon,
-				b.FacePrice,
-				b.CleanPrice,
-				2,
-				b.CouponPeriods,
-				b.RemainingDays,
-				b.CouponPeriodDays,
-				estimatedYTM,
-				0.001,
-				1_000,
-			)
-		}
 
 		if err != nil {
 			return err
 		}
 
 		b.YieldToMaturity = ytm
-	}
-
-	if b.CleanPrice == 0 && b.DirtyPrice == 0 {
+	} else {
 		b.DirtyPrice = DirtyPrice(
 			b.Coupon,
 			b.YieldToMaturity,
@@ -470,12 +403,8 @@ func CompleteBond(b *Bond) error {
 			b.RemainingDays,
 			b.CouponPeriodDays,
 		)
-	}
 
-	if b.CleanPrice == 0 {
-		b.CleanPrice = b.DirtyPrice - accruedAmount
-	} else if b.DirtyPrice == 0 {
-		b.DirtyPrice = b.CleanPrice + accruedAmount
+		b.CleanPrice = b.DirtyPrice - b.AccruedAmount
 	}
 
 	return nil
