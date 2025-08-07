@@ -4,8 +4,9 @@ import pluginZoom from 'chartjs-plugin-zoom';
 import './style.css'
 import { DataSource, DataUrl, Data, Bond } from './datasource';
 import "cally"
-import {CalendarDate} from "cally"
+import { CalendarDate } from "cally"
 import { h } from 'start-dom-jsx'
+import { chartTooltipOption, followOnHoverOption, MaturityRange, maturityRangeOption, setChartTooltipOption, setFollowOnHoverOption, setMaturityRangeOption } from './options';
 
 type YieldDataPoint = ScatterDataPoint & {
   desc: string
@@ -22,62 +23,14 @@ type ChartSetupResult = {
 
 type Handler = () => void
 
-type MaturityRange = number | "max" | undefined
-
-function getOption(name: string, defaultValue?: string): string|undefined {
-  return localStorage.getItem(name) ?? defaultValue
-}
-
-function setOption(name: string, value?: string): void {
-  if (value === undefined || value === '') {
-    localStorage.removeItem(name)
-    return
-  }
-  localStorage.setItem(name, value)
-}
-
-function chartTooltipOption(): boolean {
-  return getOption('chartTooltip', '1') === '1'
-}
-
-function setChartTooltipOption(enabled: boolean): void {
-  setOption('chartTooltip', enabled ? undefined : '0')
-}
-
-function followOnHoverOption(): boolean {
-  return getOption('followOnHover', '1') === '1'
-}
-
-function setFollowOnHoverOption(enabled: boolean): void {
-  setOption('followOnHover', enabled ? undefined : '0')
-}
-
-function maturityRangeOption(): MaturityRange {
-  const value = getOption('maturityRange')
-
-  if (value === undefined) {
-    return undefined
-  }
-
-  if (value === 'max') {
-    return 'max'
-  }
-
-  return Number(value)
-}
-
-function setMaturityRangeOption(years: MaturityRange): void {
-  setOption('maturityRange', typeof years === 'number' ? years.toString() : years)
-}
-
 /**
  * Calculate a yield curve from the data points using a tricube kernel function.
  * @param bandwidth Controls smoothness (lower = follows data more closely, higher = smoother)
  * @param numPoints Number of points on the curve (higher = smoother visualization)
  */
 function calcYieldCurve(
-  data: YieldDataPoint[], 
-  bandwidth = 0.2, 
+  data: YieldDataPoint[],
+  bandwidth = 0.2,
   numPoints = 100
 ): YieldDataPoint[] {
   const sorted = [...data].sort((a, b) => a.x - b.x);
@@ -86,28 +39,28 @@ function calcYieldCurve(
   const maxX = sorted[sorted.length - 1].x;
   const range = maxX - minX;
   const emptyDate = new Date()
-  
+
   const a = [];
-  
+
   for (let i = 0; i < numPoints; i++) {
     // Calculate evenly spaced x value
     const x = minX + (i / (numPoints - 1)) * range;
-    
+
     // Calculate weighted average for this x value
     let weightedSum = 0;
     let weightSum = 0;
-    
+
     for (let j = 0; j < sorted.length; j++) {
       // Calculate normalized distance
       const distance = Math.abs(x - sorted[j].x) / range;
-      
+
       // Apply tricube kernel function for weighting
       let weight = 0;
       if (distance < bandwidth) {
         const normalizedDist = distance / bandwidth;
         weight = Math.pow(1 - Math.pow(normalizedDist, 3), 3);
       }
-      
+
       // Add weighted contribution
       weightedSum += weight * sorted[j].y;
       weightSum += weight;
@@ -120,7 +73,7 @@ function calcYieldCurve(
       maturityDate: emptyDate,
     });
   }
-  
+
   return a;
 }
 
@@ -161,11 +114,11 @@ function setupChart(): ChartSetupResult {
       return
     }
 
-    const current = elements.find(({datasetIndex}) => datasetIndex === 0)
+    const current = elements.find(({ datasetIndex }) => datasetIndex === 0)
     if (!current) {
       return
     }
-    const {index} = current
+    const { index } = current
 
     const datasheet = document.getElementById('datasheet')
 
@@ -186,32 +139,32 @@ function setupChart(): ChartSetupResult {
     }
   }
 
-  const chart = new Chart<"scatter"|"line", YieldDataPoint[]>(canvas, {
+  const chart = new Chart<"scatter" | "line", YieldDataPoint[]>(canvas, {
     type: 'scatter',
     data: {
       labels: [],
       datasets: [
         {
-        type: 'scatter',
-        label: 'UK Gilts',
-        data: [],
-        borderWidth: 1,
-        tension: 0.4,
-        cubicInterpolationMode: 'monotone',
-        pointRadius: 5,
-        pointHoverRadius: 10,
-      },
-      {
-        type: 'line',
-        label: 'Yield Curve',
-        data: [],
-        pointRadius: 0,
-        tension: 0.4,
-        pointHitRadius: 0,
-        pointHoverRadius: 0,
-        
-      },      
-    ]
+          type: 'scatter',
+          label: 'UK Gilts',
+          data: [],
+          borderWidth: 1,
+          tension: 0.4,
+          cubicInterpolationMode: 'monotone',
+          pointRadius: 5,
+          pointHoverRadius: 10,
+        },
+        {
+          type: 'line',
+          label: 'Yield Curve',
+          data: [],
+          pointRadius: 0,
+          tension: 0.4,
+          pointHitRadius: 0,
+          pointHoverRadius: 0,
+
+        },
+      ]
     },
     options: {
       responsive: true,
@@ -223,7 +176,7 @@ function setupChart(): ChartSetupResult {
         // @ts-ignore
         filter: (item) => item.datasetIndex === 0,
 
-      },      
+      },
       scales: {
         x: {
           type: 'linear',
@@ -239,7 +192,7 @@ function setupChart(): ChartSetupResult {
               }
               return value;
             },
-          },          
+          },
         },
         y: {
           type: 'linear',
@@ -256,15 +209,15 @@ function setupChart(): ChartSetupResult {
             title: (ctxs) => {
               return ctxs.map((ctx) => {
                 const { dataset, dataIndex } = ctx,
-                data = dataset?.data[dataIndex],
-                {desc} = data as unknown as YieldDataPoint
+                  data = dataset?.data[dataIndex],
+                  { desc } = data as unknown as YieldDataPoint
                 return desc
               })
             },
             label: (ctx) => {
               const { dataset, dataIndex } = ctx,
                 data = dataset?.data[dataIndex],
-                {y,maturityDate} = data as unknown as YieldDataPoint
+                { y, maturityDate } = data as unknown as YieldDataPoint
 
               return [
                 `${y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,
@@ -283,22 +236,22 @@ function setupChart(): ChartSetupResult {
           font: {
             size: 16
           },
-        },        
+        },
         zoom: {
           pan: {
-              enabled: true,
-              mode: 'x',
+            enabled: true,
+            mode: 'x',
           },
           zoom: {
-              wheel: {
-                  enabled: true,
-                  modifierKey: 'shift',
-              },
-              pinch: {
-                  enabled: true
-              },
-              mode: 'x',
-              onZoomComplete: () => zoomCompleteHandlers?.forEach((handler) => handler())
+            wheel: {
+              enabled: true,
+              modifierKey: 'shift',
+            },
+            pinch: {
+              enabled: true
+            },
+            mode: 'x',
+            onZoomComplete: () => zoomCompleteHandlers?.forEach((handler) => handler())
           },
           limits: {
             x: {
@@ -319,8 +272,8 @@ function setupChart(): ChartSetupResult {
     }
   })
 
-  const padYearRange = (min: number, max: number, years: number): [number,number] => {
-    const padding = 1/25 * years
+  const padYearRange = (min: number, max: number, years: number): [number, number] => {
+    const padding = 1 / 25 * years
 
     return [
       Math.floor(min - padding),
@@ -352,8 +305,8 @@ function setupChart(): ChartSetupResult {
       range = "max"
     }
 
-    const {data} = chart.data.datasets[0],
-      x = data.map(({x}) => x)
+    const { data } = chart.data.datasets[0],
+      x = data.map(({ x }) => x)
 
     let xMin = x.reduce((min, x) => !min || x < min ? x : min, 8_640_000_000_000_000)
 
@@ -374,8 +327,8 @@ function setupChart(): ChartSetupResult {
     }, 'default')
 
     if (restrictYieldRange) {
-      const {minY, maxY} = data.filter(({x}) => x >= xMin && x <= xMax)
-        .reduce((acc, {y}) => {
+      const { minY, maxY } = data.filter(({ x }) => x >= xMin && x <= xMax)
+        .reduce((acc, { y }) => {
           if (y < acc.minY) {
             acc.minY = y
           }
@@ -383,7 +336,7 @@ function setupChart(): ChartSetupResult {
             acc.maxY = y
           }
           return acc
-        }, {minY: Number.MAX_VALUE, maxY: 0})
+        }, { minY: Number.MAX_VALUE, maxY: 0 })
 
       const [zoomMinY, zoomMaxY] = padYieldRange(minY, maxY)
 
@@ -398,15 +351,15 @@ function setupChart(): ChartSetupResult {
 
   let maxMaturityYears: number | undefined
 
-  const updateData: UpdateDataFn = ({ts, data: bonds}: Data) => {
+  const updateData: UpdateDataFn = ({ ts, data: bonds }: Data) => {
     const data = bonds.map((bond) => ({
-        x: bond.MaturityYears + (bond.MaturityDays / 365),
-        y: bond.YieldToMaturity,
-        desc: bond.Desc,
-        maturityDate: bond.MaturityDate,
-      }))
+      x: bond.MaturityYears + (bond.MaturityDays / 365),
+      y: bond.YieldToMaturity,
+      desc: bond.Desc,
+      maturityDate: bond.MaturityDate,
+    }))
 
-    chart.data.labels = data.map(({x}) => x)
+    chart.data.labels = data.map(({ x }) => x)
     chart.data.datasets[0].data = data
     chart.data.datasets[1].data = calcYieldCurve(data, 0.2, 100)
 
@@ -423,9 +376,9 @@ function setupChart(): ChartSetupResult {
 
     const [scaleMinY, scaleMaxY] = padYieldRange(minY, maxY)
 
-    const {scales} = chart.options
+    const { scales } = chart.options
     if (scales) {
-      const {x,y} = scales
+      const { x, y } = scales
       if (x) {
         x.min = scaleMinX
         x.max = scaleMaxX
@@ -436,9 +389,9 @@ function setupChart(): ChartSetupResult {
       }
     }
 
-    const {plugins} = chart.options
+    const { plugins } = chart.options
     if (plugins) {
-      const {zoom, title} = plugins
+      const { zoom, title } = plugins
 
       if (title) {
         title.text = ts.toLocaleDateString(undefined, {
@@ -449,9 +402,9 @@ function setupChart(): ChartSetupResult {
       }
 
       if (zoom) {
-        const {limits} = zoom
+        const { limits } = zoom
         if (limits) {
-          const {x,y} = limits
+          const { x, y } = limits
           if (x) {
             x.min = scaleMinX
             x.max = scaleMaxX
@@ -473,10 +426,10 @@ function setupChart(): ChartSetupResult {
 
   if (maturityGroup) {
     maturityGroup.addEventListener('change', (event) => {
-      const {target} = event
-  
+      const { target } = event
+
       if (target instanceof HTMLInputElement && target.name === 'maturity_range') {
-        const {value} = target
+        const { value } = target
 
         let range: MaturityRange
         if (value === 'max') {
@@ -508,7 +461,7 @@ function setupChart(): ChartSetupResult {
     checkOption(maturityRange)
 
     zoomCompleteHandlers.push(() => {
-      const {min, max} = chart.scales.x,
+      const { min, max } = chart.scales.x,
         years = yearDiff(new Date(min), new Date(max))
       clearChecks()
       checkOption(years >= (maxMaturityYears ?? 50) ? 'max' : years)
@@ -527,7 +480,7 @@ function setupChart(): ChartSetupResult {
       }
 
       displayOptions.addEventListener('change', (e) => {
-        const {target} = e
+        const { target } = e
 
         if (!(target instanceof HTMLInputElement)) {
           return
@@ -535,38 +488,38 @@ function setupChart(): ChartSetupResult {
 
         switch (target.name) {
           case 'display_tooltips': {
-            const {plugins} = chart.options
+            const { plugins } = chart.options
             if (plugins && plugins.tooltip) {
               plugins.tooltip.enabled = target.checked
               setChartTooltipOption(target.checked)
               chart.update()
             }
           }
-          break
+            break
           case 'follow_on_hover': {
             chart.options.onHover = target.checked ? onDatapointSelected : undefined
             setFollowOnHoverOption(target.checked)
           }
-          break
+            break
         }
       })
     }
   }
 
   const selectData: SelectDataFn = (index: number) => {
-    chart.setActiveElements([{datasetIndex: 0, index}])
+    chart.setActiveElements([{ datasetIndex: 0, index }])
 
     const a = chart.getActiveElements()
     if (a.length) {
       const ae = a[0],
-        {element} = ae,
-        {x,y} = element
+        { element } = ae,
+        { x, y } = element
 
-      chart.tooltip?.setActiveElements([ae], {x,y})
+      chart.tooltip?.setActiveElements([ae], { x, y })
 
-      const {chartArea} = chart;
+      const { chartArea } = chart;
       if (chartArea) {
-        const {left, right} = chartArea
+        const { left, right } = chartArea
         const padding = (right - left) * 0.1
 
         let panX = 0
@@ -578,12 +531,12 @@ function setupChart(): ChartSetupResult {
 
         if (panX) {
           chart.pan({ x: panX }, undefined, 'default');
-        }        
+        }
       }
     }
 
     chart.update()
-  }  
+  }
 
   return { updateData, selectData }
 }
@@ -594,14 +547,14 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
   if (!datasheet) {
     throw new Error('Datasheet element not found')
   }
-  
+
   const tbody = datasheet.querySelector("tbody")
   if (!(tbody instanceof HTMLTableSectionElement)) {
     throw new Error('Datasheet tbody element not found')
   }
 
   tbody.addEventListener('click', (e) => {
-    const {target} = e
+    const { target } = e
 
     if (!(target instanceof HTMLElement)) {
       return
@@ -623,7 +576,7 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
     onDataChange?.(index)
   })
 
-  const updateData: UpdateDataFn = ({data: bonds}: Data) => {
+  const updateData: UpdateDataFn = ({ data: bonds }: Data) => {
     tbody.innerHTML = ''
 
     const currencyFormat = new Intl.NumberFormat(undefined, {
@@ -646,7 +599,7 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
       day: '2-digit',
     })
 
-    const formatMaturity = ({MaturityYears, MaturityDays}: Bond) => {
+    const formatMaturity = ({ MaturityYears, MaturityDays }: Bond) => {
       const years = MaturityYears.toLocaleString() + " " + (MaturityYears > 1 ? "years" : "year")
       const days = MaturityDays.toLocaleString() + " " + (MaturityDays > 1 ? "days" : "day")
 
@@ -665,13 +618,13 @@ function setupDatasheet(onDataChange?: SelectDataFn): UpdateDataFn {
     }
 
     bonds.forEach((bond: Bond) => {
-      
+
       const tr = <tr>
-        <td class="p-2 desktop:p-4">{bond.Desc}<br/>{bond.ISIN}</td>
-        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{bond.Coupon}%</span><br/><span class="whitespace-nowrap">{dateFormat.format(bond.NextCouponDate)}</span></td>
+        <td class="p-2 desktop:p-4">{bond.Desc}<br />{bond.ISIN}</td>
+        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{bond.Coupon}%</span><br /><span class="whitespace-nowrap">{dateFormat.format(bond.NextCouponDate)}</span></td>
         <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{percentFormat.format(bond.YieldToMaturity)}%</span></td>
-        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{dateFormat.format(bond.MaturityDate)}</span><br/><span class="whitespace-nowrap">{formatMaturity(bond)}</span></td>
-        <td class="p-2 desktop:p-4">{currencyFormat.format(bond.CleanPrice)}<br/>{currencyFormat.format(bond.DirtyPrice)}</td>
+        <td class="p-2 desktop:p-4"><span class="whitespace-nowrap">{dateFormat.format(bond.MaturityDate)}</span><br /><span class="whitespace-nowrap">{formatMaturity(bond)}</span></td>
+        <td class="p-2 desktop:p-4">{currencyFormat.format(bond.CleanPrice)}<br />{currencyFormat.format(bond.DirtyPrice)}</td>
       </tr>
       tbody.appendChild(tr)
     })
@@ -699,7 +652,7 @@ async function main() {
     const dataUrl = await ds.getLatestDataUrl()
     if (dataUrl) {
       await updateDataUrl(dataUrl)
-    }  
+    }
   }
 
   await latest()
@@ -724,7 +677,7 @@ async function main() {
     e.stopPropagation()
 
     await latest()
-    
+
     if (calendar instanceof CalendarDate) {
       calendar.value = toCalValue(currTs)
     }
@@ -735,25 +688,29 @@ async function main() {
     const setValue = (ts?: Date) => calendar.value = toCalValue(ts)
 
     setValue(currTs)
-    
+
     calendar.isDateDisallowed = (date: Date) => {
       return ds.hasData(date) !== true
     }
 
     calendar.addEventListener('change', async (e) => {
-      const {target} = e
+      const { target } = e
       if (target instanceof CalendarDate) {
         const dataUrl = await ds.getDataUrl(new Date(target.value))
         if (dataUrl) {
           updateDataUrl(dataUrl)
         } else {
           setValue(currTs)
-        }  
+        }
       }
     })
   }
 
 }
 
-main().catch(console.error)
+try {
+  await main()
+} catch (err) {
+  console.error(err)
+}
 
