@@ -333,6 +333,9 @@ func CompleteBond(b *Bond) error {
 
 		if b.SettlementDate.After(t) {
 			t = t.AddDate(0, 6, 0)
+			if b.SettlementDate.After(t) {
+				t = t.AddDate(0, 6, 0)
+			}
 		} else {
 			t2 := t.AddDate(0, -6, 0)
 			if b.SettlementDate.Before(t2) {
@@ -356,14 +359,7 @@ func CompleteBond(b *Bond) error {
 	b.AccruedAmount = float64(b.AccruedDays) / float64(b.CouponPeriodDays) * b.Coupon / 2 / 100 * b.FacePrice
 
 	b.CouponPeriods = b.MaturityYears * 2
-
-	endDate := time.Date(b.SettlementDate.Year()+1, time.January, 1, 0, 0, 0, 0, b.SettlementDate.Location())
-	if b.NextCouponDate.Before(endDate) {
-		b.CouponPeriods++
-		if b.NextCouponDate.AddDate(0, 6, 0).Before(endDate) {
-			b.CouponPeriods++
-		}
-	}
+	b.CouponPeriods += int(math.Ceil(float64(b.MaturityDays) / float64(b.CouponPeriodDays)))
 
 	if b.YieldToMaturity == 0 {
 		b.DirtyPrice = b.CleanPrice + b.AccruedAmount
